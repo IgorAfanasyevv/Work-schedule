@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import Modal from '../ui/Modal';
 import { useScheduler } from '../../SchedulerContext';
-import { DAY_NAMES } from '../../types';
+import { ABSENCE_REASONS, DAY_NAMES } from '../../types';
+
+const PLAIN_DAY_OFF = 'חופש';
 
 export default function DayConstraintsModal({ employeeId, day }: { employeeId: string; day: number }) {
   const { state, setDayConstraints, closeModal } = useScheduler();
   const e = state.employees.find((x) => x.id === employeeId);
 
-  const existingDayOff = e?.blocks.some((b) => b.scope === 'day' && b.day === day) ?? false;
+  const existingDayOffBlock = e?.blocks.find((b) => b.scope === 'day' && b.day === day);
   const existingShiftIds = new Set(
     (e?.blocks || []).filter((b) => b.scope === 'shift' && b.day === day).map((b) => b.shiftTypeId as string)
   );
@@ -15,7 +17,8 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
     (b) => b.scope === 'category' && (b.day === day || b.day === 'all')
   );
 
-  const [dayOff, setDayOff] = useState(existingDayOff);
+  const [dayOff, setDayOff] = useState(!!existingDayOffBlock);
+  const [reason, setReason] = useState<string>(existingDayOffBlock?.reason || PLAIN_DAY_OFF);
   const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set(existingShiftIds));
 
   if (!e) return null;
@@ -30,7 +33,13 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
   }
 
   function save() {
-    setDayConstraints(employeeId, day, dayOff, dayOff ? [] : Array.from(selectedShifts));
+    setDayConstraints(
+      employeeId,
+      day,
+      dayOff,
+      dayOff ? [] : Array.from(selectedShifts),
+      dayOff ? (reason === PLAIN_DAY_OFF ? undefined : reason) : undefined
+    );
     closeModal();
   }
 
@@ -58,7 +67,7 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
           alignItems: 'center',
           gap: 8,
           cursor: 'pointer',
-          marginBottom: 16,
+          marginBottom: dayOff ? 10 : 16,
           background: 'var(--panel-2)',
           border: '1px solid var(--border)',
           borderRadius: 8,
@@ -68,6 +77,20 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
         <input type="checkbox" checked={dayOff} onChange={(ev) => setDayOff(ev.target.checked)} />
         <span style={{ fontWeight: 600 }}>יום חופש — לא עובד כלל ביום זה</span>
       </label>
+
+      {dayOff && (
+        <div className="field">
+          <label>סיבה (מוצגת בטבלת הסיכום)</label>
+          <select value={reason} onChange={(ev) => setReason(ev.target.value)}>
+            <option value={PLAIN_DAY_OFF}>חופש רגיל</option>
+            {ABSENCE_REASONS.map((r) => (
+              <option value={r} key={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {!dayOff && (
         <div className="field">

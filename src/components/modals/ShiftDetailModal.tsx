@@ -13,13 +13,25 @@ const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
 };
 
 export default function ShiftDetailModal({ instanceId }: { instanceId: string }) {
-  const { state, assignMode, setAssignMode, assignEmployee, assignTemp, removeTemp, closeModal, openModal } =
-    useScheduler();
+  const {
+    state,
+    assignMode,
+    setAssignMode,
+    assignEmployee,
+    assignTemp,
+    removeTemp,
+    setInstanceTime,
+    closeModal,
+    openModal,
+  } = useScheduler();
   const inst = state.instances.find((i) => i.id === instanceId);
   const [selectedEmp, setSelectedEmp] = useState<string>(inst?.employeeId ?? '');
   const [tempName, setTempName] = useState<string>(inst?.tempWorkerName ?? '');
   const [feedback, setFeedback] = useState<{ reasons: string[] } | null>(null);
   const [explainText, setExplainText] = useState<string | null>(null);
+  const [customTime, setCustomTime] = useState(false);
+  const [customStart, setCustomStart] = useState<string>(inst?.start ?? '');
+  const [customEnd, setCustomEnd] = useState<string>(inst?.end ?? '');
 
   if (!inst) return null;
   const status = instanceStatus(inst);
@@ -109,6 +121,32 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
           </select>
         </div>
       )}
+
+      <div style={{ marginTop: 6, marginBottom: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12.5, color: 'var(--text-dim)' }}>
+          <input type="checkbox" checked={customTime} onChange={(ev) => setCustomTime(ev.target.checked)} />
+          שעות מותאמות אישית לתא הזה בלבד (לדוגמה: העובד הזה מגיע 7:00–15:00 במקום השעות הרגילות)
+        </label>
+        {customTime && (
+          <div className="field-row" style={{ marginTop: 8 }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>שעת התחלה</label>
+              <input type="time" value={customStart} onChange={(ev) => setCustomStart(ev.target.value)} />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>שעת סיום</label>
+              <input type="time" value={customEnd} onChange={(ev) => setCustomEnd(ev.target.value)} />
+            </div>
+            <button
+              className="btn sm"
+              style={{ marginBottom: 1 }}
+              onClick={() => customStart && customEnd && setInstanceTime(instanceId, customStart, customEnd)}
+            >
+              עדכן שעות
+            </button>
+          </div>
+        )}
+      </div>
 
       {feedback && (
         <div className="card" style={{ background: 'var(--amber-dim)', borderColor: 'var(--amber)', padding: '12px 14px', margin: '10px 0' }}>

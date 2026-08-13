@@ -19,6 +19,7 @@ import {
 } from './engine';
 import { defaultState, loadState, saveState, subscribeRemoteState } from './state';
 import { isFirebaseConfigured } from './firebaseClient';
+import { addDaysISO, mostRecentSundayISO } from './dateUtils';
 
 export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes' | 'audit';
 
@@ -57,26 +58,33 @@ interface Ctx {
   isShared: boolean;
 
   setWeekLabel: (label: string) => void;
+  navigateWeek: (direction: -1 | 1) => void;
+  goToCurrentWeek: () => void;
   fullGenerate: () => void;
   localRecalc: () => void;
+  clearSchedule: () => void;
 
   assignEmployee: (instanceId: string, employeeId: string | null, opts?: { force?: boolean }) => { ok: boolean; reasons?: string[] };
   assignTemp: (instanceId: string, name: string) => void;
   removeTemp: (instanceId: string) => void;
   markUnavailable: (instanceId: string, reason: string) => void;
   applyReplacementOption: (instanceId: string, optionIndex: number) => void;
+  setInstanceTime: (instanceId: string, start: string, end: string) => void;
+  duplicateInstance: (instanceId: string) => void;
+  deleteInstance: (instanceId: string) => void;
 
   addEmployee: (name: string, desired: number, max: number) => void;
   updateEmployee: (id: string, name: string, desired: number, max: number) => void;
   deleteEmployee: (id: string) => void;
   addBlock: (employeeId: string, block: EmployeeBlock) => void;
   removeBlock: (employeeId: string, idx: number) => void;
-  setDayConstraints: (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[]) => void;
+  setDayConstraints: (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[], reason?: string) => void;
 
   addShiftType: (name: string, start: string, end: string, category: Category) => void;
   updateShiftType: (id: string, name: string, start: string, end: string, category: Category) => void;
   deleteShiftType: (id: string) => void;
   addAdhocShift: (day: number, name: string, start: string, end: string, category: Category) => void;
+  clearAuditLog: () => void;
 }
 
 const SchedulerCtx = createContext<Ctx | null>(null);
@@ -214,6 +222,38 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       toast(changed > 0 ? `חישוב מקומי בוצע — ${changed} שינויים` : 'חישוב מקומי בוצע — אין שינויים נדרשים');
       return next;
     });
+  }, [withAudit, toast]);
+
+  const navigateWeek = useCallback((direction: -1 | 1) => {
+    setState((s) => {
+      const next = { ...s, weekStartDate: addDaysISO(s.weekStartDate, direction * 7) };
+      saveState(next);
+      return next;
+    });
+  }, []);
+
+  const goToCurrentWeek = useCallback(() => {
+    setState((s) => {
+      const next = { ...s, weekStartDate: mostRecentSundayISO() };
+      saveState(next);
+      return next;
+    });
+  }, []);
+
+  const clearSchedule = useCallback(() => {
+    setState((s) => {
+      const instances = s.instances.map((i) => ({
+        ...i,
+        employeeId: null,
+        tempWorkerName: null,
+        manual: false,
+        exception: false,
+      }));
+      const next = withAudit({ ...s, instances }, `כל השיבוצים בסידור נוקו (${s.weekLabel}).`);
+      saveState(next);
+      return next;
+    });
+    toast('הסידור נוקה — כל המשמרות ריקות כעת');
   }, [withAudit, toast]);
 
   /* ------------------------------------------------------------------ */
@@ -433,7 +473,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
    * blocks (managed from the "עובדים" tab) untouched.
    */
   const setDayConstraints = useCallback(
-    (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[]) => {
+    (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[], reason?: string) => {
       setState((s) => {
         const e = s.employees.find((x) => x.id === employeeId);
         if (!e) return s;
@@ -443,17 +483,81 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           return true;
         });
         const additions: EmployeeBlock[] = dayOff
-          ? [{ scope: 'day', day }]
+          ? [{ scope: 'day', day, reason: reason || undefined }]
           : blockedShiftTypeIds.map((shiftTypeId) => ({ scope: 'shift', day, shiftTypeId }));
         const employees = s.employees.map((x) =>
           x.id === employeeId ? { ...x, blocks: [...kept, ...additions] } : x
         );
         const text = dayOff
-          ? `${e.name}: סומן כיום חופש ב${DAY_NAMES[day]}.`
+          ? `${e.name}: סומן כ${reason || 'יום חופש'} ב${DAY_NAMES[day]}.`
           : blockedShiftTypeIds.length
           ? `${e.name}: עודכנו משמרות חסומות ב${DAY_NAMES[day]} (${blockedShiftTypeIds.length}).`
           : `${e.name}: הוסרו כל החסימות ל${DAY_NAMES[day]} (זמין לכל המשמרות).`;
         const next = withAudit({ ...s, employees }, text);
+        saveState(next);
+        return next;
+      });
+    },
+    [withAudit]
+  );
+
+  /** lets a manager override the hours of a single scheduled cell (e.g. "Igor works 7:00-15:00 that day only") without touching the shift-type template used by every other day */
+  const setInstanceTime = useCallback(
+    (instanceId: string, start: string, end: string) => {
+      setState((s) => {
+        const inst = s.instances.find((i) => i.id === instanceId);
+        if (!inst) return s;
+        const instances = s.instances.map((i) =>
+          i.id === instanceId ? { ...i, start, end, durationHours: durationHoursSafe(start, end) } : i
+        );
+        const next = withAudit(
+          { ...s, instances },
+          `${DAY_NAMES[inst.day]} ${inst.name}: שעות המשמרת שונו ל-${start}-${end} (עבור תא זה בלבד).`
+        );
+        saveState(next);
+        return next;
+      });
+      toast('השעות עודכנו');
+    },
+    [withAudit, toast]
+  );
+
+  /** adds another empty slot identical to an existing one (same day/shift/time) - for holidays/weekends that need two people on the same shift */
+  const duplicateInstance = useCallback(
+    (instanceId: string) => {
+      setState((s) => {
+        const source = s.instances.find((i) => i.id === instanceId);
+        if (!source) return s;
+        const clone: ShiftInstance = {
+          ...source,
+          id: uid(),
+          employeeId: null,
+          tempWorkerName: null,
+          manual: false,
+          exception: false,
+        };
+        const next = withAudit(
+          { ...s, instances: [...s.instances, clone] },
+          `נוסף תא נוסף ל-${DAY_NAMES[source.day]} ${source.name} (${source.start}-${source.end}) - לשיבוץ עובד שני.`
+        );
+        saveState(next);
+        return next;
+      });
+      toast('נוסף מקום שני לאותה משמרת');
+    },
+    [withAudit, toast]
+  );
+
+  const deleteInstance = useCallback(
+    (instanceId: string) => {
+      setState((s) => {
+        const inst = s.instances.find((i) => i.id === instanceId);
+        if (!inst) return s;
+        const instances = s.instances.filter((i) => i.id !== instanceId);
+        const next = withAudit(
+          { ...s, instances },
+          `הוסר תא: ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}-${inst.end}).`
+        );
         saveState(next);
         return next;
       });
@@ -531,6 +635,15 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     [withAudit, toast]
   );
 
+  const clearAuditLog = useCallback(() => {
+    setState((s) => {
+      const next = { ...s, auditLog: [] };
+      saveState(next);
+      return next;
+    });
+    toast('יומן השינויים נוקה');
+  }, [toast]);
+
   /* ------------------------------------------------------------------ */
   const value = useMemo<Ctx>(
     () => ({
@@ -551,13 +664,19 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       isLoaded,
       isShared: isFirebaseConfigured,
       setWeekLabel,
+      navigateWeek,
+      goToCurrentWeek,
       fullGenerate,
       localRecalc,
+      clearSchedule,
       assignEmployee,
       assignTemp,
       removeTemp,
       markUnavailable,
       applyReplacementOption,
+      setInstanceTime,
+      duplicateInstance,
+      deleteInstance,
       addEmployee,
       updateEmployee,
       deleteEmployee,
@@ -568,6 +687,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       updateShiftType,
       deleteShiftType,
       addAdhocShift,
+      clearAuditLog,
     }),
     [
       state,
@@ -582,13 +702,19 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       toast,
       isLoaded,
       setWeekLabel,
+      navigateWeek,
+      goToCurrentWeek,
       fullGenerate,
       localRecalc,
+      clearSchedule,
       assignEmployee,
       assignTemp,
       removeTemp,
       markUnavailable,
       applyReplacementOption,
+      setInstanceTime,
+      duplicateInstance,
+      deleteInstance,
       addEmployee,
       updateEmployee,
       deleteEmployee,
@@ -599,6 +725,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       updateShiftType,
       deleteShiftType,
       addAdhocShift,
+      clearAuditLog,
     ]
   );
 

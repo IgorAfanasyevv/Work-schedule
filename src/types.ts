@@ -16,6 +16,8 @@ export interface EmployeeBlock {
   day: number | 'all';
   category?: Category; // used when scope === 'category'
   shiftTypeId?: string; // used when scope === 'shift'
+  /** free-text reason shown in the weekly summary, e.g. "מילואים" / "חופש" (used when scope === 'day') */
+  reason?: string;
 }
 
 export interface Employee {
@@ -50,6 +52,8 @@ export interface AuditEntry {
 
 export interface AppState {
   weekLabel: string;
+  /** ISO date (YYYY-MM-DD) of the Sunday this week's table starts on, used for the date labels + week navigation arrows */
+  weekStartDate: string;
   shiftTypes: ShiftType[];
   employees: Employee[];
   instances: ShiftInstance[];
@@ -59,6 +63,7 @@ export interface AppState {
 export type EligibilityReasonType =
   | 'blocked'
   | 'overlap'
+  | 'sameDayShift'
   | 'maxShifts'
   | 'maxDesired'
   | 'maxNights'
@@ -101,6 +106,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 export const REASON_LABELS: Record<EligibilityReasonType, string> = {
   blocked: 'העובד חסם משמרת זו',
   overlap: 'קיימת חפיפת שעות עם משמרת אחרת שלו',
+  sameDayShift: 'העובד כבר משובץ למשמרת נוספת שמתחילה באותו יום (לא ניתן לעבוד פעמיים באותו יום)',
   maxShifts: 'העובד הגיע למספר המשמרות המקסימלי שלו',
   maxDesired: 'העובד כבר הגיע למספר המשמרות הרצוי שלו (ניתן לשבץ מעבר לכך רק ידנית)',
   maxNights: 'העובד הגיע למכסת 3 משמרות הלילה השבועית',

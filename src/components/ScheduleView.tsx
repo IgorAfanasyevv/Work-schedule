@@ -4,18 +4,19 @@ import { assigneeLabel, instanceStatus, toMinutes } from '../engine';
 import { DAY_NAMES } from '../types';
 import type { ShiftInstance } from '../types';
 import AvailabilityGrid from './AvailabilityGrid';
+import { dateForDayIndex, formatDDMM, yearOfWeek } from '../dateUtils';
 
 export default function ScheduleView() {
-  const { state, calendarView, setCalendarView, openModal, setWeekLabel } = useScheduler();
+  const { state, calendarView, setCalendarView, openModal, setWeekLabel, navigateWeek, goToCurrentWeek, clearSchedule } =
+    useScheduler();
 
   return (
     <>
       <div className="topbar">
         <h2>סידור עבודה</h2>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <div className="week-pill">
-            📅{' '}
-            <input type="text" value={state.weekLabel} onChange={(e) => setWeekLabel(e.target.value)} />
+            📅 <input type="text" value={state.weekLabel} onChange={(e) => setWeekLabel(e.target.value)} />
           </div>
           <button className={`btn ${!calendarView ? 'primary' : ''}`} onClick={() => setCalendarView(false)}>
             טבלה
@@ -29,6 +30,41 @@ export default function ScheduleView() {
           <HeaderActions />
         </div>
       </div>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          marginBottom: 16,
+          background: 'var(--panel)',
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          padding: '10px 16px',
+        }}
+      >
+        <button className="btn sm" onClick={() => navigateWeek(-1)} title="שבוע קודם">
+          ◀ שבוע קודם
+        </button>
+        <div style={{ textAlign: 'center', minWidth: 90 }}>
+          <div className="mono" style={{ fontSize: 18, fontWeight: 700 }}>
+            {yearOfWeek(state.weekStartDate)}
+          </div>
+          <button
+            className="btn ghost sm"
+            style={{ padding: '2px 8px', fontSize: 11, marginTop: 2 }}
+            onClick={goToCurrentWeek}
+            title="חזרה לשבוע הנוכחי"
+          >
+            השבוע הנוכחי
+          </button>
+        </div>
+        <button className="btn sm" onClick={() => navigateWeek(1)} title="שבוע הבא">
+          שבוע הבא ▶
+        </button>
+      </div>
+
       <div className="legend">
         <span>
           <i style={{ background: 'var(--green)' }} />
@@ -52,6 +88,18 @@ export default function ScheduleView() {
         </span>
       </div>
       {calendarView ? <CalendarView /> : <TableView />}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+        <button
+          className="btn danger sm"
+          onClick={() => {
+            if (confirm('לנקות את כל השיבוצים בסידור הנוכחי? הפעולה הזו לא הפיכה.')) clearSchedule();
+          }}
+        >
+          🗑 נקה סידור לגמרי
+        </button>
+      </div>
+
       <AvailabilityGrid />
     </>
   );
@@ -79,14 +127,15 @@ function statusClass(status: ReturnType<typeof instanceStatus>): string {
   return 'st-filled';
 }
 
-function ShiftCell({ inst }: { inst: ShiftInstance }) {
-  const { state, openModal, setAssignMode } = useScheduler();
+function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boolean }) {
+  const { state, openModal, setAssignMode, deleteInstance } = useScheduler();
   const status = instanceStatus(inst);
   const label = assigneeLabel(inst, state.employees);
 
   return (
     <div
       className={`shift-cell ${statusClass(status)}`}
+      style={{ marginBottom: 4 }}
       onClick={() => {
         setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
         openModal({ type: 'shiftDetail', instanceId: inst.id });
@@ -112,13 +161,68 @@ function ShiftCell({ inst }: { inst: ShiftInstance }) {
           <span className="mini-dot" style={{ background: 'var(--amber)' }} title="חריגה" />
         </div>
       )}
+      {showDelete && (
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            if (confirm('להסיר את התא הנוסף הזה?')) deleteInstance(inst.id);
+          }}
+          title="הסר תא זה"
+          style={{
+            position: 'absolute',
+            bottom: 6,
+            left: 6,
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-faint)',
+            fontSize: 12,
+            padding: 2,
+            cursor: 'pointer',
+          }}
+        >
+          🗑
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DaySlotCell({ day, stId, instances }: { day: number; stId: string; instances: ShiftInstance[] }) {
+  const { duplicateInstance } = useScheduler();
+  const matches = instances.filter((i) => i.day === day && i.shiftTypeId === stId);
+
+  return (
+    <div style={{ position: 'relative', minHeight: 58 }}>
+      {matches.map((inst) => (
+        <ShiftCell inst={inst} key={inst.id} showDelete={matches.length > 1} />
+      ))}
+      <button
+        type="button"
+        onClick={() => duplicateInstance(matches[0]?.id ?? matches[matches.length - 1]?.id)}
+        title="הוסף תא נוסף לאותה משמרת (לחגים/סופ״ש עם שני עובדים)"
+        disabled={matches.length === 0}
+        style={{
+          width: '100%',
+          background: 'none',
+          border: '1px dashed var(--border-soft)',
+          borderRadius: 8,
+          color: 'var(--text-faint)',
+          fontSize: 11,
+          padding: '4px 0',
+          cursor: matches.length === 0 ? 'default' : 'pointer',
+          opacity: matches.length === 0 ? 0.4 : 1,
+        }}
+      >
+        + הוסף עובד שני
+      </button>
     </div>
   );
 }
 
 function TableView() {
   const { state } = useScheduler();
-  const { instances, shiftTypes } = state;
+  const { instances, shiftTypes, weekStartDate } = state;
 
   const rowKeys: string[] = [];
   const seen = new Set<string>();
@@ -140,8 +244,13 @@ function TableView() {
         <thead>
           <tr>
             <th style={{ textAlign: 'right' }}>משמרת</th>
-            {DAY_NAMES.map((d) => (
-              <th key={d}>{d}</th>
+            {DAY_NAMES.map((d, i) => (
+              <th key={d}>
+                {d}
+                <div className="mono" style={{ fontSize: 10.5, color: 'var(--text-faint)', fontWeight: 400, marginTop: 2 }}>
+                  {formatDDMM(dateForDayIndex(weekStartDate, i))}
+                </div>
+              </th>
             ))}
           </tr>
         </thead>
@@ -154,14 +263,13 @@ function TableView() {
               <tr key={stId}>
                 <td className="rowlabel">
                   {label}
-                  <span className="sub">
-                    {sample ? `${sample.start}–${sample.end}` : ''}
-                  </span>
+                  <span className="sub">{sample ? `${sample.start}–${sample.end}` : ''}</span>
                 </td>
-                {DAY_NAMES.map((_, d) => {
-                  const inst = instances.find((i) => i.day === d && i.shiftTypeId === stId);
-                  return <td key={d}>{inst ? <ShiftCell inst={inst} /> : <div style={{ minHeight: 58 }} />}</td>;
-                })}
+                {DAY_NAMES.map((_, d) => (
+                  <td key={d}>
+                    <DaySlotCell day={d} stId={stId} instances={instances} />
+                  </td>
+                ))}
               </tr>
             );
           })}
@@ -183,6 +291,9 @@ function CalendarView() {
           <div className="timeline-day" key={d}>
             <div className="dname">
               {dayName}
+              <span className="mono" style={{ fontSize: 11, color: 'var(--text-faint)', fontWeight: 400 }}>
+                {formatDDMM(dateForDayIndex(state.weekStartDate, d))}
+              </span>
               {isWeekend && <span className="badge b-blue">סופ"ש</span>}
             </div>
             <div className="timeline-axis">

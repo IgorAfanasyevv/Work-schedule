@@ -137,6 +137,15 @@ export function getEligibility(
   const conflicts = mine.filter((i) => overlaps(rangeA, shiftAbsRange(i.day, i.start, i.end)));
   if (conflicts.length) reasons.push({ type: 'overlap', conflicts });
 
+  // A person can't work two shifts that both START on the same calendar day — e.g. a morning
+  // shift followed by a night shift starting later that same day. This is stricter than pure
+  // time-overlap: those two might not literally overlap in minutes, but the person still can't
+  // physically do both. The one explicit exception this must NOT block: a night shift that
+  // started the PREVIOUS day and only *ends* this morning — that one has day === yesterday, so
+  // it doesn't count here, and the person can still pick up e.g. an afternoon shift today.
+  const sameStartDay = mine.filter((i) => i.day === instance.day);
+  if (sameStartDay.length) reasons.push({ type: 'sameDayShift', conflicts: sameStartDay });
+
   const currentCount = instances.filter((i) => i.employeeId === employee.id && i.id !== instance.id).length;
   const cap = employee[capField];
   if (currentCount >= cap) {
@@ -243,11 +252,16 @@ export function findReplacements(
   });
 
   if (options.length < maxOptions) {
-    const blockedByOverlapOnly = employees
+    const blockedBySingleConflict = employees
       .map((e) => ({ e, elig: getEligibility(e, vacant, instances) }))
-      .filter((x) => !x.elig.eligible && x.elig.reasons.length === 1 && x.elig.reasons[0].type === 'overlap');
+      .filter(
+        (x) =>
+          !x.elig.eligible &&
+          x.elig.reasons.length === 1 &&
+          (x.elig.reasons[0].type === 'overlap' || x.elig.reasons[0].type === 'sameDayShift')
+      );
 
-    blockedByOverlapOnly.forEach(({ e, elig }) => {
+    blockedBySingleConflict.forEach(({ e, elig }) => {
       const conflictInstances = elig.reasons[0].conflicts || [];
       const subChanges: { instanceId: string; toEmployeeId: string }[] = [];
       let allResolved = true;
@@ -295,6 +309,10 @@ export function explain(employee: Employee, instance: ShiftInstance, instances: 
         .map((c) => `${DAY_NAMES_HE[c.day]} ${c.name} (${c.start}–${c.end})`)
         .join(', ');
       return `${employee.name} כבר משובץ במשמרת חופפת בשעות: ${names}.`;
+    }
+    if (r.type === 'sameDayShift') {
+      const names = (r.conflicts || []).map((c) => `${c.name} (${c.start}–${c.end})`).join(', ');
+      return `${employee.name} כבר משובץ למשמרת אחרת שמתחילה באותו יום: ${names}. לא ניתן לעבוד פעמיים באותו יום.`;
     }
     if (r.type === 'maxShifts') return `${employee.name} כבר עבד ${r.currentCount} משמרות מתוך מקסימום ${employee.maxShifts}.`;
     if (r.type === 'maxDesired')

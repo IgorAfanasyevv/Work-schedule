@@ -1,5 +1,6 @@
 import type { AppState, Employee, ShiftType } from './types';
 import { buildTemplateInstances, uid } from './engine';
+import { mostRecentSundayISO } from './dateUtils';
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, isFirebaseConfigured, STATE_COLLECTION, STATE_DOC_ID } from './firebaseClient';
 
@@ -30,10 +31,19 @@ export function defaultState(): AppState {
   const instances = buildTemplateInstances(shiftTypes);
   return {
     weekLabel: 'שבוע נוכחי',
+    weekStartDate: mostRecentSundayISO(),
     shiftTypes,
     employees,
     instances,
     auditLog: [],
+  };
+}
+
+/** fills in fields that older saved states (from before a feature existed) might be missing */
+function withMigrations(s: AppState): AppState {
+  return {
+    ...s,
+    weekStartDate: s.weekStartDate || mostRecentSundayISO(),
   };
 }
 
@@ -45,7 +55,7 @@ export function defaultState(): AppState {
 export function loadLocalState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AppState;
+    if (raw) return withMigrations(JSON.parse(raw) as AppState);
   } catch {
     /* fall through to default */
   }
@@ -78,7 +88,7 @@ export async function loadRemoteState(): Promise<AppState> {
     const snap = await getDoc(stateDocRef());
     if (snap.exists()) {
       const payload = snap.data() as { data?: AppState };
-      if (payload.data) return payload.data;
+      if (payload.data) return withMigrations(payload.data);
     }
     // first run: seed the document with the default state
     const seed = defaultState();
@@ -107,7 +117,7 @@ export function subscribeRemoteState(onChange: (state: AppState) => void): () =>
   const unsubscribe = onSnapshot(stateDocRef(), (snap) => {
     if (snap.exists()) {
       const payload = snap.data() as { data?: AppState };
-      if (payload.data) onChange(payload.data);
+      if (payload.data) onChange(withMigrations(payload.data));
     }
   });
   return unsubscribe;
