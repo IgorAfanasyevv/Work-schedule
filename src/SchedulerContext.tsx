@@ -18,7 +18,7 @@ import {
   uid,
 } from './engine';
 import { defaultState, loadState, saveState, subscribeRemoteState } from './state';
-import { isSupabaseConfigured } from './supabaseClient';
+import { isFirebaseConfigured } from './firebaseClient';
 
 export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes' | 'audit';
 
@@ -111,7 +111,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
   // live updates from other tabs/users when Supabase is configured
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isFirebaseConfigured) return;
     const unsubscribe = subscribeRemoteState((incoming) => setState(incoming));
     return unsubscribe;
   }, []);
@@ -512,7 +512,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       toasts,
       toast,
       isLoaded,
-      isShared: isSupabaseConfigured,
+      isShared: isFirebaseConfigured,
       setWeekLabel,
       fullGenerate,
       localRecalc,

@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// This app has no login screen: anyone who has the deployed link can read AND
+// write the shared schedule document, which is what makes "open the link and
+// everyone sees the same data" work with zero backend code. That's fine for a
+// small trusted team using a private URL, but it means the link itself is the
+// only access control. If you need real per-user accounts/permissions later,
+// add Firebase Authentication and change `if true` below to check request.auth.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /appState/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

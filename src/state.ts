@@ -1,6 +1,7 @@
 import type { AppState, Employee, ShiftType } from './types';
 import { buildTemplateInstances, uid } from './engine';
-import { isSupabaseConfigured, supabase, STATE_ROW_ID, STATE_TABLE } from './supabaseClient';
+import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, isFirebaseConfigured, STATE_COLLECTION, STATE_DOC_ID } from './firebaseClient';
 
 const STORAGE_KEY = 'shift-scheduler-state';
 
@@ -64,55 +65,52 @@ export function saveLocalState(state: AppState) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  shared (Supabase) persistence — every visitor reads/writes the      */
-/*  same row, so everyone who opens the link sees the same schedule     */
+/*  shared (Firebase Firestore) persistence — every visitor reads/      */
+/*  writes the same document, so everyone who opens the link sees the   */
+/*  same schedule, updated live                                         */
 /* ------------------------------------------------------------------ */
 
+const stateDocRef = () => doc(db!, STATE_COLLECTION, STATE_DOC_ID);
+
 export async function loadRemoteState(): Promise<AppState> {
-  if (!supabase) return defaultState();
-  const { data, error } = await supabase.from(STATE_TABLE).select('data').eq('id', STATE_ROW_ID).maybeSingle();
-  if (error) {
-    console.error('remote load failed', error);
+  if (!db) return defaultState();
+  try {
+    const snap = await getDoc(stateDocRef());
+    if (snap.exists()) {
+      const payload = snap.data() as { data?: AppState };
+      if (payload.data) return payload.data;
+    }
+    // first run: seed the document with the default state
+    const seed = defaultState();
+    await setDoc(stateDocRef(), { data: seed, updatedAt: serverTimestamp() });
+    return seed;
+  } catch (e) {
+    console.error('remote load failed', e);
     return defaultState();
   }
-  if (data?.data) return data.data as AppState;
-
-  // first run: seed the row with the default state
-  const seed = defaultState();
-  await supabase.from(STATE_TABLE).upsert({ id: STATE_ROW_ID, data: seed, updated_at: new Date().toISOString() });
-  return seed;
 }
 
 let remoteSaveTimer: ReturnType<typeof setTimeout> | null = null;
 export function saveRemoteState(state: AppState) {
-  if (!supabase) return;
+  if (!db) return;
   if (remoteSaveTimer) clearTimeout(remoteSaveTimer);
-  remoteSaveTimer = setTimeout(async () => {
-    const { error } = await supabase!
-      .from(STATE_TABLE)
-      .upsert({ id: STATE_ROW_ID, data: state, updated_at: new Date().toISOString() });
-    if (error) console.error('remote save failed', error);
+  remoteSaveTimer = setTimeout(() => {
+    setDoc(stateDocRef(), { data: state, updatedAt: serverTimestamp() }, { merge: true }).catch((e) =>
+      console.error('remote save failed', e)
+    );
   }, 400);
 }
 
-/** subscribe to changes made by *other* tabs/users; returns an unsubscribe function */
+/** subscribe to live changes (from any tab/user); returns an unsubscribe function */
 export function subscribeRemoteState(onChange: (state: AppState) => void): () => void {
-  if (!supabase) return () => {};
-  const channel = supabase
-    .channel('app_state_changes')
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: STATE_TABLE, filter: `id=eq.${STATE_ROW_ID}` },
-      (payload) => {
-        if (payload.new && (payload.new as { data?: AppState }).data) {
-          onChange((payload.new as { data: AppState }).data);
-        }
-      }
-    )
-    .subscribe();
-  return () => {
-    supabase!.removeChannel(channel);
-  };
+  if (!db) return () => {};
+  const unsubscribe = onSnapshot(stateDocRef(), (snap) => {
+    if (snap.exists()) {
+      const payload = snap.data() as { data?: AppState };
+      if (payload.data) onChange(payload.data);
+    }
+  });
+  return unsubscribe;
 }
 
 /* ------------------------------------------------------------------ */
@@ -120,10 +118,10 @@ export function subscribeRemoteState(onChange: (state: AppState) => void): () =>
 /* ------------------------------------------------------------------ */
 
 export async function loadState(): Promise<AppState> {
-  return isSupabaseConfigured ? loadRemoteState() : loadLocalState();
+  return isFirebaseConfigured ? loadRemoteState() : loadLocalState();
 }
 
 export function saveState(state: AppState) {
-  if (isSupabaseConfigured) saveRemoteState(state);
+  if (isFirebaseConfigured) saveRemoteState(state);
   else saveLocalState(state);
 }
