@@ -8,16 +8,15 @@ export default function AuditLog() {
     <>
       <div className="topbar">
         <h2>יומן שינויים</h2>
-        {state.auditLog.length > 0 && (
-          <button
-            className="btn danger sm"
-            onClick={() => {
-              if (confirm('לנקות את כל יומן השינויים? הפעולה הזו לא הפיכה.')) clearAuditLog();
-            }}
-          >
-            🗑 נקה יומן
-          </button>
-        )}
+        <button
+          className="btn danger sm"
+          disabled={state.auditLog.length === 0}
+          onClick={() => {
+            if (confirm('לנקות את כל יומן השינויים? הפעולה הזו לא הפיכה.')) clearAuditLog();
+          }}
+        >
+          🗑 נקה יומן
+        </button>
       </div>
       <div className="card">
         {state.auditLog.length === 0 ? (
