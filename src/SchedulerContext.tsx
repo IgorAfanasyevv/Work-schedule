@@ -1,0 +1,578 @@
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import type {
+  AppState,
+  Employee,
+  EmployeeBlock,
+  ShiftInstance,
+  ShiftType,
+  Category,
+} from './types';
+import { REASON_LABELS, DAY_NAMES } from './types';
+import {
+  assigneeLabel,
+  fairnessScore,
+  findReplacements,
+  generateFullSchedule,
+  getEligibility,
+  makeInstance,
+  uid,
+} from './engine';
+import { defaultState, loadState, saveState, subscribeRemoteState } from './state';
+import { isSupabaseConfigured } from './supabaseClient';
+
+export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes' | 'audit';
+
+export type ModalState =
+  | { type: 'shiftDetail'; instanceId: string }
+  | { type: 'markUnavailable'; instanceId: string }
+  | { type: 'replacements'; instanceId: string }
+  | { type: 'addEditEmployee'; employeeId: string | null }
+  | { type: 'addBlock'; employeeId: string }
+  | { type: 'shiftType'; shiftTypeId: string | null }
+  | { type: 'adhocShift' }
+  | null;
+
+interface ToastItem {
+  id: number;
+  msg: string;
+}
+
+interface Ctx {
+  state: AppState;
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  modal: ModalState;
+  openModal: (m: ModalState) => void;
+  closeModal: () => void;
+  calendarView: boolean;
+  setCalendarView: (v: boolean) => void;
+  selectedEmployeeId: string | null;
+  setSelectedEmployeeId: (id: string) => void;
+  assignMode: 'regular' | 'temp';
+  setAssignMode: (m: 'regular' | 'temp') => void;
+  toasts: ToastItem[];
+  toast: (msg: string) => void;
+  isLoaded: boolean;
+  isShared: boolean;
+
+  setWeekLabel: (label: string) => void;
+  fullGenerate: () => void;
+  localRecalc: () => void;
+
+  assignEmployee: (instanceId: string, employeeId: string | null, opts?: { force?: boolean }) => { ok: boolean; reasons?: string[] };
+  assignTemp: (instanceId: string, name: string) => void;
+  removeTemp: (instanceId: string) => void;
+  markUnavailable: (instanceId: string, reason: string) => void;
+  applyReplacementOption: (instanceId: string, optionIndex: number) => void;
+
+  addEmployee: (name: string, desired: number, max: number) => void;
+  updateEmployee: (id: string, name: string, desired: number, max: number) => void;
+  deleteEmployee: (id: string) => void;
+  addBlock: (employeeId: string, block: EmployeeBlock) => void;
+  removeBlock: (employeeId: string, idx: number) => void;
+
+  addShiftType: (name: string, start: string, end: string, category: Category) => void;
+  updateShiftType: (id: string, name: string, start: string, end: string, category: Category) => void;
+  deleteShiftType: (id: string) => void;
+  addAdhocShift: (day: number, name: string, start: string, end: string, category: Category) => void;
+}
+
+const SchedulerCtx = createContext<Ctx | null>(null);
+
+export function useScheduler(): Ctx {
+  const ctx = useContext(SchedulerCtx);
+  if (!ctx) throw new Error('useScheduler must be used within SchedulerProvider');
+  return ctx;
+}
+
+export function SchedulerProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<AppState>(() => defaultState());
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [tab, setTab] = useState<Tab>('dashboard');
+  const [modal, setModal] = useState<ModalState>(null);
+  const [calendarView, setCalendarView] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [assignMode, setAssignMode] = useState<'regular' | 'temp'>('regular');
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  // initial load (from Supabase if configured, otherwise from this browser's localStorage)
+  useEffect(() => {
+    let cancelled = false;
+    loadState().then((s) => {
+      if (!cancelled) {
+        setState(s);
+        setIsLoaded(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // live updates from other tabs/users when Supabase is configured
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const unsubscribe = subscribeRemoteState((incoming) => setState(incoming));
+    return unsubscribe;
+  }, []);
+
+  const toast = useCallback((msg: string) => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, msg }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
+  }, []);
+
+  const withAudit = useCallback((next: AppState, text: string): AppState => {
+    const entry = { id: uid(), ts: new Date().toLocaleString('he-IL'), text };
+    const auditLog = [entry, ...next.auditLog].slice(0, 300);
+    return { ...next, auditLog };
+  }, []);
+
+  const empName = useCallback(
+    (id: string | null) => {
+      if (!id) return '—';
+      const e = state.employees.find((x) => x.id === id);
+      return e ? e.name : '—';
+    },
+    [state.employees]
+  );
+
+  const openModal = useCallback((m: ModalState) => {
+    if (m?.type === 'shiftDetail') {
+      // reset the toggle to match the current assignment kind
+      // (looked up lazily inside the component, but default sensibly here)
+    }
+    setModal(m);
+  }, []);
+  const closeModal = useCallback(() => setModal(null), []);
+
+  /* ------------------------------------------------------------------ */
+  const setWeekLabel = useCallback(
+    (label: string) => {
+      setState((s) => {
+        const next = { ...s, weekLabel: label };
+        saveState(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  const fullGenerate = useCallback(() => {
+    setState((s) => {
+      const generated = generateFullSchedule(s.employees, s.instances);
+      const next = withAudit({ ...s, instances: generated }, `נוצר סידור מלא אוטומטית עבור ${s.weekLabel}.`);
+      saveState(next);
+      return next;
+    });
+    toast('הסידור המלא נוצר בהצלחה');
+  }, [withAudit, toast]);
+
+  const localRecalc = useCallback(() => {
+    setState((s) => {
+      let changed = 0;
+      let instances = s.instances.map((inst) => ({ ...inst }));
+
+      // 1) unassign anyone who is now in hard-constraint violation (unless explicitly flagged as an approved exception)
+      instances = instances.map((inst) => {
+        if (inst.employeeId && !inst.exception) {
+          const e = s.employees.find((x) => x.id === inst.employeeId);
+          if (!e) {
+            changed++;
+            return { ...inst, employeeId: null };
+          }
+          const elig = getEligibility(e, inst, instances, inst.id);
+          if (!elig.eligible) {
+            changed++;
+            return { ...inst, employeeId: null };
+          }
+        }
+        return inst;
+      });
+
+      // 2) try to auto-fill empties (never touches מתגבר slots), respecting each employee's requested count
+      instances = instances.map((inst) => {
+        if (inst.employeeId || inst.tempWorkerName) return inst;
+        const cands = s.employees.filter((e) => getEligibility(e, inst, instances, null, 'desiredShifts').eligible);
+        if (cands.length) {
+          const scored = cands
+            .map((e) => ({ e, score: fairnessScore(e, inst, instances) }))
+            .sort((a, b) => a.score - b.score);
+          changed++;
+          return { ...inst, employeeId: scored[0].e.id };
+        }
+        return inst;
+      });
+
+      const next = withAudit(
+        { ...s, instances },
+        `בוצע חישוב מקומי: ${changed} שיבוצים עודכנו, שאר הסידור נשאר ללא שינוי.`
+      );
+      saveState(next);
+      toast(changed > 0 ? `חישוב מקומי בוצע — ${changed} שינויים` : 'חישוב מקומי בוצע — אין שינויים נדרשים');
+      return next;
+    });
+  }, [withAudit, toast]);
+
+  /* ------------------------------------------------------------------ */
+  const assignEmployee = useCallback(
+    (instanceId: string, employeeId: string | null, opts?: { force?: boolean }): { ok: boolean; reasons?: string[] } => {
+      const inst = state.instances.find((i) => i.id === instanceId);
+      if (!inst) return { ok: false };
+
+      if (employeeId) {
+        const e = state.employees.find((x) => x.id === employeeId)!;
+        const elig = getEligibility(e, inst, state.instances, inst.id);
+        if (!elig.eligible && !opts?.force) {
+          return { ok: false, reasons: elig.reasons.map((r) => REASON_LABELS[r.type]) };
+        }
+        const from = assigneeLabel(inst, state.employees) || 'ריק';
+        const isException = !elig.eligible && !!opts?.force;
+        setState((s) => {
+          const instances = s.instances.map((i) =>
+            i.id === instanceId ? { ...i, employeeId, tempWorkerName: null, manual: true, exception: isException } : i
+          );
+          const text = isException
+            ? `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ${empName(employeeId)} (חריגה ידנית מאושרת: ${elig.reasons
+                .map((r) => REASON_LABELS[r.type])
+                .join('; ')})`
+            : `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ${empName(employeeId)} (שינוי ידני)`;
+          const next = withAudit({ ...s, instances }, text);
+          saveState(next);
+          return next;
+        });
+        toast(isException ? 'השיבוץ נשמר כחריגה ידנית' : 'השיבוץ נשמר');
+        return { ok: true };
+      }
+
+      // unassign
+      const from = assigneeLabel(inst, state.employees) || 'ריק';
+      setState((s) => {
+        const instances = s.instances.map((i) =>
+          i.id === instanceId ? { ...i, employeeId: null, tempWorkerName: null, manual: true, exception: false } : i
+        );
+        const next = withAudit(
+          { ...s, instances },
+          `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ריק (שינוי ידני)`
+        );
+        saveState(next);
+        return next;
+      });
+      toast('השיבוץ נשמר');
+      return { ok: true };
+    },
+    [state.instances, state.employees, withAudit, toast, empName]
+  );
+
+  const assignTemp = useCallback(
+    (instanceId: string, name: string) => {
+      const inst = state.instances.find((i) => i.id === instanceId);
+      if (!inst) return;
+      const from = assigneeLabel(inst, state.employees) || 'ריק';
+      setState((s) => {
+        const instances = s.instances.map((i) =>
+          i.id === instanceId ? { ...i, employeeId: null, tempWorkerName: name, manual: true, exception: false } : i
+        );
+        const next = withAudit(
+          { ...s, instances },
+          `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ${name} (מתגבר, לא ברשימת העובדים הקבועים)`
+        );
+        saveState(next);
+        return next;
+      });
+      toast('המתגבר שובץ למשמרת');
+    },
+    [state.instances, state.employees, withAudit, toast]
+  );
+
+  const removeTemp = useCallback(
+    (instanceId: string) => {
+      const inst = state.instances.find((i) => i.id === instanceId);
+      if (!inst) return;
+      const name = inst.tempWorkerName;
+      setState((s) => {
+        const instances = s.instances.map((i) =>
+          i.id === instanceId ? { ...i, tempWorkerName: null, manual: false } : i
+        );
+        const next = withAudit({ ...s, instances }, `${DAY_NAMES[inst.day]} ${inst.name}: המתגבר ${name} הוסר מהמשמרת.`);
+        saveState(next);
+        return next;
+      });
+      toast('המתגבר הוסר');
+    },
+    [state.instances, withAudit, toast]
+  );
+
+  const markUnavailable = useCallback(
+    (instanceId: string, reason: string) => {
+      const inst = state.instances.find((i) => i.id === instanceId);
+      if (!inst) return;
+      const who = empName(inst.employeeId);
+      setState((s) => {
+        const instances = s.instances.map((i) =>
+          i.id === instanceId ? { ...i, employeeId: null, manual: false, exception: false } : i
+        );
+        const next = withAudit(
+          { ...s, instances },
+          `${who} הוסר מהמשמרת ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}–${inst.end}). סיבה: ${reason}.`
+        );
+        saveState(next);
+        return next;
+      });
+    },
+    [state.instances, empName, withAudit]
+  );
+
+  const applyReplacementOption = useCallback(
+    (instanceId: string, optionIndex: number) => {
+      const options = findReplacements(instanceId, state.instances, state.employees, 3);
+      const opt = options[optionIndex];
+      if (!opt) return;
+      setState((s) => {
+        let instances = s.instances;
+        let text = '';
+        opt.changes.forEach((ch) => {
+          const inst = instances.find((i) => i.id === ch.instanceId)!;
+          const fromName = assigneeLabel(inst, s.employees) || 'ריק';
+          instances = instances.map((i) =>
+            i.id === ch.instanceId ? { ...i, employeeId: ch.toEmployeeId, tempWorkerName: null, manual: true } : i
+          );
+          text += `${DAY_NAMES[inst.day]} · ${inst.name} (${inst.start}–${inst.end}): ${fromName} ← ${empName(
+            ch.toEmployeeId
+          )} · הוחלף באמצעות מנוע חיפוש מחליפים\n`;
+        });
+        const next = withAudit({ ...s, instances }, text.trim());
+        saveState(next);
+        return next;
+      });
+      toast(`ההחלפה בוצעה (${opt.changeCount} שינוי${opt.changeCount > 1 ? 'ים' : ''})`);
+    },
+    [state.instances, state.employees, empName, withAudit, toast]
+  );
+
+  /* ------------------------------------------------------------------ */
+  const addEmployee = useCallback(
+    (name: string, desired: number, max: number) => {
+      setState((s) => {
+        const employee: Employee = { id: uid(), name, desiredShifts: desired, maxShifts: max, blocks: [] };
+        const next = withAudit({ ...s, employees: [...s.employees, employee] }, `נוסף עובד חדש: ${name}.`);
+        saveState(next);
+        return next;
+      });
+      toast('נשמר');
+    },
+    [withAudit, toast]
+  );
+
+  const updateEmployee = useCallback(
+    (id: string, name: string, desired: number, max: number) => {
+      setState((s) => {
+        const employees = s.employees.map((e) => (e.id === id ? { ...e, name, desiredShifts: desired, maxShifts: max } : e));
+        const next = withAudit({ ...s, employees }, `עודכנו פרטי העובד ${name}.`);
+        saveState(next);
+        return next;
+      });
+      toast('נשמר');
+    },
+    [withAudit, toast]
+  );
+
+  const deleteEmployee = useCallback(
+    (id: string) => {
+      setState((s) => {
+        const e = s.employees.find((x) => x.id === id);
+        if (!e) return s;
+        const instances = s.instances.map((i) => (i.employeeId === id ? { ...i, employeeId: null } : i));
+        const employees = s.employees.filter((x) => x.id !== id);
+        const next = withAudit({ ...s, employees, instances }, `העובד ${e.name} נמחק מהמערכת.`);
+        saveState(next);
+        return next;
+      });
+      toast('העובד נמחק');
+    },
+    [withAudit, toast]
+  );
+
+  const addBlock = useCallback(
+    (employeeId: string, block: EmployeeBlock) => {
+      setState((s) => {
+        const e = s.employees.find((x) => x.id === employeeId);
+        if (!e) return s;
+        const employees = s.employees.map((x) => (x.id === employeeId ? { ...x, blocks: [...x.blocks, block] } : x));
+        const next = withAudit({ ...s, employees }, `נוספה חסימה עבור ${e.name}.`);
+        saveState(next);
+        return next;
+      });
+      toast('החסימה נוספה');
+    },
+    [withAudit, toast]
+  );
+
+  const removeBlock = useCallback(
+    (employeeId: string, idx: number) => {
+      setState((s) => {
+        const e = s.employees.find((x) => x.id === employeeId);
+        if (!e) return s;
+        const employees = s.employees.map((x) =>
+          x.id === employeeId ? { ...x, blocks: x.blocks.filter((_, i) => i !== idx) } : x
+        );
+        const next = withAudit({ ...s, employees }, `הוסרה חסימה עבור ${e.name}.`);
+        saveState(next);
+        return next;
+      });
+    },
+    [withAudit]
+  );
+
+  /* ------------------------------------------------------------------ */
+  const addShiftType = useCallback(
+    (name: string, start: string, end: string, category: Category) => {
+      setState((s) => {
+        const id = uid();
+        const shiftTypes: ShiftType[] = [...s.shiftTypes, { id, name, start, end, category }];
+        const newInstances: ShiftInstance[] = [];
+        for (let d = 0; d < 7; d++) newInstances.push(makeInstance(d, { id, name, start, end, category }));
+        const next = withAudit(
+          { ...s, shiftTypes, instances: [...s.instances, ...newInstances] },
+          `נוסף סוג משמרת חדש "${name}" (${start}-${end}) לכל ימי השבוע.`
+        );
+        saveState(next);
+        return next;
+      });
+      toast('נשמר');
+    },
+    [withAudit, toast]
+  );
+
+  const updateShiftType = useCallback(
+    (id: string, name: string, start: string, end: string, category: Category) => {
+      setState((s) => {
+        const shiftTypes = s.shiftTypes.map((st) => (st.id === id ? { ...st, name, start, end, category } : st));
+        const instances = s.instances.map((i) =>
+          i.shiftTypeId === id
+            ? { ...i, name, start, end, category, durationHours: durationHoursSafe(start, end) }
+            : i
+        );
+        const next = withAudit({ ...s, shiftTypes, instances }, `עודכן סוג המשמרת "${name}" (${start}-${end}).`);
+        saveState(next);
+        return next;
+      });
+      toast('נשמר');
+    },
+    [withAudit, toast]
+  );
+
+  const deleteShiftType = useCallback(
+    (id: string) => {
+      setState((s) => {
+        const st = s.shiftTypes.find((x) => x.id === id);
+        if (!st) return s;
+        const shiftTypes = s.shiftTypes.filter((x) => x.id !== id);
+        const instances = s.instances.filter((i) => i.shiftTypeId !== id);
+        const next = withAudit({ ...s, shiftTypes, instances }, `סוג המשמרת "${st.name}" נמחק.`);
+        saveState(next);
+        return next;
+      });
+      toast('נמחק');
+    },
+    [withAudit, toast]
+  );
+
+  const addAdhocShift = useCallback(
+    (day: number, name: string, start: string, end: string, category: Category) => {
+      setState((s) => {
+        const inst = makeInstance(day, { id: 'adhoc-' + uid(), name, start, end, category });
+        const next = withAudit(
+          { ...s, instances: [...s.instances, inst] },
+          `נוספה משמרת ייעודית: ${DAY_NAMES[day]} ${name} (${start}-${end}).`
+        );
+        saveState(next);
+        return next;
+      });
+      toast('המשמרת נוספה');
+    },
+    [withAudit, toast]
+  );
+
+  /* ------------------------------------------------------------------ */
+  const value = useMemo<Ctx>(
+    () => ({
+      state,
+      tab,
+      setTab,
+      modal,
+      openModal,
+      closeModal,
+      calendarView,
+      setCalendarView,
+      selectedEmployeeId,
+      setSelectedEmployeeId,
+      assignMode,
+      setAssignMode,
+      toasts,
+      toast,
+      isLoaded,
+      isShared: isSupabaseConfigured,
+      setWeekLabel,
+      fullGenerate,
+      localRecalc,
+      assignEmployee,
+      assignTemp,
+      removeTemp,
+      markUnavailable,
+      applyReplacementOption,
+      addEmployee,
+      updateEmployee,
+      deleteEmployee,
+      addBlock,
+      removeBlock,
+      addShiftType,
+      updateShiftType,
+      deleteShiftType,
+      addAdhocShift,
+    }),
+    [
+      state,
+      tab,
+      modal,
+      openModal,
+      closeModal,
+      calendarView,
+      selectedEmployeeId,
+      assignMode,
+      toasts,
+      toast,
+      isLoaded,
+      setWeekLabel,
+      fullGenerate,
+      localRecalc,
+      assignEmployee,
+      assignTemp,
+      removeTemp,
+      markUnavailable,
+      applyReplacementOption,
+      addEmployee,
+      updateEmployee,
+      deleteEmployee,
+      addBlock,
+      removeBlock,
+      addShiftType,
+      updateShiftType,
+      deleteShiftType,
+      addAdhocShift,
+    ]
+  );
+
+  return <SchedulerCtx.Provider value={value}>{children}</SchedulerCtx.Provider>;
+}
+
+function durationHoursSafe(start: string, end: string): number {
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const s = toMin(start);
+  let e = toMin(end);
+  if (e <= s) e += 1440;
+  return +((e - s) / 60).toFixed(2);
+}
