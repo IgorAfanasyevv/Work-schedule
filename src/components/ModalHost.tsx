@@ -7,6 +7,7 @@ import EmployeeModal from './modals/EmployeeModal';
 import BlockModal from './modals/BlockModal';
 import ShiftTypeModal from './modals/ShiftTypeModal';
 import AdhocShiftModal from './modals/AdhocShiftModal';
+import DayConstraintsModal from './modals/DayConstraintsModal';
 
 export default function ModalHost() {
   const { modal } = useScheduler();
@@ -27,6 +28,8 @@ export default function ModalHost() {
       return <ShiftTypeModal shiftTypeId={modal.shiftTypeId} />;
     case 'adhocShift':
       return <AdhocShiftModal />;
+    case 'dayConstraints':
+      return <DayConstraintsModal employeeId={modal.employeeId} day={modal.day} />;
     default:
       return null;
   }

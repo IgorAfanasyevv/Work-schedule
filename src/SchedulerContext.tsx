@@ -30,6 +30,7 @@ export type ModalState =
   | { type: 'addBlock'; employeeId: string }
   | { type: 'shiftType'; shiftTypeId: string | null }
   | { type: 'adhocShift' }
+  | { type: 'dayConstraints'; employeeId: string; day: number }
   | null;
 
 interface ToastItem {
@@ -70,7 +71,7 @@ interface Ctx {
   deleteEmployee: (id: string) => void;
   addBlock: (employeeId: string, block: EmployeeBlock) => void;
   removeBlock: (employeeId: string, idx: number) => void;
-  toggleDayAvailability: (employeeId: string, day: number) => void;
+  setDayConstraints: (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[]) => void;
 
   addShiftType: (name: string, start: string, end: string, category: Category) => void;
   updateShiftType: (id: string, name: string, start: string, end: string, category: Category) => void;
@@ -425,26 +426,33 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     [withAudit]
   );
 
-  /** used by the weekly availability grid: toggles a whole-day block for one employee/day with a single click */
-  const toggleDayAvailability = useCallback(
-    (employeeId: string, day: number) => {
+  /**
+   * used by the weekly availability modal: sets, in one atomic update, whether an employee is off
+   * for the whole day, or which specific shifts they can't work that day (can be several).
+   * Replaces only this day's own day/shift-scoped blocks — leaves any whole-week category
+   * blocks (managed from the "עובדים" tab) untouched.
+   */
+  const setDayConstraints = useCallback(
+    (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[]) => {
       setState((s) => {
         const e = s.employees.find((x) => x.id === employeeId);
         if (!e) return s;
-        const idx = e.blocks.findIndex((b) => b.scope === 'day' && b.day === day);
-        let employees: Employee[];
-        let text: string;
-        if (idx >= 0) {
-          employees = s.employees.map((x) =>
-            x.id === employeeId ? { ...x, blocks: x.blocks.filter((_, i) => i !== idx) } : x
-          );
-          text = `${e.name} סומן כזמין שוב ביום ${DAY_NAMES[day]}.`;
-        } else {
-          employees = s.employees.map((x) =>
-            x.id === employeeId ? { ...x, blocks: [...x.blocks, { scope: 'day', day }] } : x
-          );
-          text = `${e.name} סומן כלא זמין ביום ${DAY_NAMES[day]}.`;
-        }
+        const kept = e.blocks.filter((b) => {
+          if (b.scope === 'day' && b.day === day) return false;
+          if (b.scope === 'shift' && b.day === day) return false;
+          return true;
+        });
+        const additions: EmployeeBlock[] = dayOff
+          ? [{ scope: 'day', day }]
+          : blockedShiftTypeIds.map((shiftTypeId) => ({ scope: 'shift', day, shiftTypeId }));
+        const employees = s.employees.map((x) =>
+          x.id === employeeId ? { ...x, blocks: [...kept, ...additions] } : x
+        );
+        const text = dayOff
+          ? `${e.name}: סומן כיום חופש ב${DAY_NAMES[day]}.`
+          : blockedShiftTypeIds.length
+          ? `${e.name}: עודכנו משמרות חסומות ב${DAY_NAMES[day]} (${blockedShiftTypeIds.length}).`
+          : `${e.name}: הוסרו כל החסימות ל${DAY_NAMES[day]} (זמין לכל המשמרות).`;
         const next = withAudit({ ...s, employees }, text);
         saveState(next);
         return next;
@@ -555,7 +563,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       deleteEmployee,
       addBlock,
       removeBlock,
-      toggleDayAvailability,
+      setDayConstraints,
       addShiftType,
       updateShiftType,
       deleteShiftType,
@@ -586,7 +594,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       deleteEmployee,
       addBlock,
       removeBlock,
-      toggleDayAvailability,
+      setDayConstraints,
       addShiftType,
       updateShiftType,
       deleteShiftType,
