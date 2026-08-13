@@ -120,8 +120,14 @@ a{color:inherit;}
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);}
 table.sched{width:100%;border-collapse:collapse;min-width:920px;}
 table.sched th{
-  background:var(--panel-2);color:var(--text-dim);font-size:12.5px;font-weight:600;padding:10px 8px;
+  background:var(--panel-2);color:var(--text);font-size:14.5px;font-weight:700;padding:12px 8px 11px;
   border-bottom:1px solid var(--border);position:sticky;top:0;
+}
+table.sched th.weekend-col{background:rgba(107,138,253,.09);}
+table.sched th .day-date{
+  display:block;font-size:12.5px;font-weight:700;color:var(--teal);margin-top:5px;
+  font-family:'IBM Plex Mono',monospace;letter-spacing:.02em;background:rgba(79,209,197,.12);
+  border-radius:5px;padding:2px 7px;display:inline-block;
 }
 table.sched td{padding:6px;border-bottom:1px solid var(--border-soft);border-left:1px solid var(--border-soft);vertical-align:top;}
 table.sched td:first-child, table.sched th:first-child{border-left:none;}
@@ -146,7 +152,11 @@ table.sched td:first-child, table.sched th:first-child{border-left:none;}
 
 /* ---------- calendar / timeline view ---------- */
 .timeline-day{margin-bottom:14px;}
-.timeline-day .dname{font-size:13px;font-weight:700;color:var(--text-dim);margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+.timeline-day .dname{font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:10px;}
+.timeline-day .dname .day-date{
+  font-size:12.5px;font-weight:700;color:var(--teal);font-family:'IBM Plex Mono',monospace;
+  background:rgba(79,209,197,.12);border-radius:5px;padding:2px 8px;
+}
 .timeline-axis{position:relative;height:56px;background:
   repeating-linear-gradient(90deg, var(--border-soft) 0, var(--border-soft) 1px, transparent 1px, transparent calc(100%/24));
   border:1px solid var(--border);border-radius:8px;overflow:hidden;}

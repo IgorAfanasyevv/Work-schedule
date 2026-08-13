@@ -7,8 +7,17 @@ import AvailabilityGrid from './AvailabilityGrid';
 import { dateForDayIndex, formatDDMM, yearOfWeek } from '../dateUtils';
 
 export default function ScheduleView() {
-  const { state, calendarView, setCalendarView, openModal, setWeekLabel, navigateWeek, goToCurrentWeek, clearSchedule } =
-    useScheduler();
+  const {
+    state,
+    calendarView,
+    setCalendarView,
+    openModal,
+    setWeekLabel,
+    navigateWeek,
+    goToCurrentWeek,
+    goToDate,
+    clearSchedule,
+  } = useScheduler();
 
   return (
     <>
@@ -42,6 +51,7 @@ export default function ScheduleView() {
           border: '1px solid var(--border)',
           borderRadius: 10,
           padding: '10px 16px',
+          flexWrap: 'wrap',
         }}
       >
         <button className="btn sm" onClick={() => navigateWeek(-1)} title="שבוע קודם">
@@ -63,6 +73,30 @@ export default function ScheduleView() {
         <button className="btn sm" onClick={() => navigateWeek(1)} title="שבוע הבא">
           שבוע הבא ▶
         </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderRight: '1px solid var(--border)', paddingRight: 14, marginRight: 4 }}>
+          <label
+            htmlFor="jump-to-date"
+            style={{ fontSize: 12.5, color: 'var(--text-dim)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            📅 קפוץ לתאריך:
+          </label>
+          <input
+            id="jump-to-date"
+            type="date"
+            onChange={(e) => goToDate(e.target.value)}
+            style={{
+              background: 'var(--panel-2)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+              borderRadius: 7,
+              padding: '6px 9px',
+              fontFamily: 'inherit',
+              fontSize: 13,
+              colorScheme: 'dark',
+            }}
+          />
+        </div>
       </div>
 
       <div className="legend">
@@ -245,11 +279,9 @@ function TableView() {
           <tr>
             <th style={{ textAlign: 'right' }}>משמרת</th>
             {DAY_NAMES.map((d, i) => (
-              <th key={d}>
+              <th key={d} className={i === 5 || i === 6 ? 'weekend-col' : ''}>
                 {d}
-                <div className="mono" style={{ fontSize: 10.5, color: 'var(--text-faint)', fontWeight: 400, marginTop: 2 }}>
-                  {formatDDMM(dateForDayIndex(weekStartDate, i))}
-                </div>
+                <span className="day-date">{formatDDMM(dateForDayIndex(weekStartDate, i))}</span>
               </th>
             ))}
           </tr>
@@ -291,9 +323,7 @@ function CalendarView() {
           <div className="timeline-day" key={d}>
             <div className="dname">
               {dayName}
-              <span className="mono" style={{ fontSize: 11, color: 'var(--text-faint)', fontWeight: 400 }}>
-                {formatDDMM(dateForDayIndex(state.weekStartDate, d))}
-              </span>
+              <span className="day-date">{formatDDMM(dateForDayIndex(state.weekStartDate, d))}</span>
               {isWeekend && <span className="badge b-blue">סופ"ש</span>}
             </div>
             <div className="timeline-axis">

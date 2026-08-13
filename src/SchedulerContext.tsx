@@ -60,6 +60,7 @@ interface Ctx {
   setWeekLabel: (label: string) => void;
   navigateWeek: (direction: -1 | 1) => void;
   goToCurrentWeek: () => void;
+  goToDate: (dateISO: string) => void;
   fullGenerate: () => void;
   localRecalc: () => void;
   clearSchedule: () => void;
@@ -235,6 +236,17 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const goToCurrentWeek = useCallback(() => {
     setState((s) => {
       const next = { ...s, weekStartDate: mostRecentSundayISO() };
+      saveState(next);
+      return next;
+    });
+  }, []);
+
+  /** jump straight to the week containing an arbitrary chosen date */
+  const goToDate = useCallback((dateISO: string) => {
+    if (!dateISO) return;
+    setState((s) => {
+      const [y, m, d] = dateISO.split('-').map(Number);
+      const next = { ...s, weekStartDate: mostRecentSundayISO(new Date(y, m - 1, d)) };
       saveState(next);
       return next;
     });
@@ -666,6 +678,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setWeekLabel,
       navigateWeek,
       goToCurrentWeek,
+      goToDate,
       fullGenerate,
       localRecalc,
       clearSchedule,
@@ -704,6 +717,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setWeekLabel,
       navigateWeek,
       goToCurrentWeek,
+      goToDate,
       fullGenerate,
       localRecalc,
       clearSchedule,
