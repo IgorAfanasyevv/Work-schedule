@@ -70,6 +70,7 @@ interface Ctx {
   deleteEmployee: (id: string) => void;
   addBlock: (employeeId: string, block: EmployeeBlock) => void;
   removeBlock: (employeeId: string, idx: number) => void;
+  toggleDayAvailability: (employeeId: string, day: number) => void;
 
   addShiftType: (name: string, start: string, end: string, category: Category) => void;
   updateShiftType: (id: string, name: string, start: string, end: string, category: Category) => void;
@@ -424,6 +425,34 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     [withAudit]
   );
 
+  /** used by the weekly availability grid: toggles a whole-day block for one employee/day with a single click */
+  const toggleDayAvailability = useCallback(
+    (employeeId: string, day: number) => {
+      setState((s) => {
+        const e = s.employees.find((x) => x.id === employeeId);
+        if (!e) return s;
+        const idx = e.blocks.findIndex((b) => b.scope === 'day' && b.day === day);
+        let employees: Employee[];
+        let text: string;
+        if (idx >= 0) {
+          employees = s.employees.map((x) =>
+            x.id === employeeId ? { ...x, blocks: x.blocks.filter((_, i) => i !== idx) } : x
+          );
+          text = `${e.name} סומן כזמין שוב ביום ${DAY_NAMES[day]}.`;
+        } else {
+          employees = s.employees.map((x) =>
+            x.id === employeeId ? { ...x, blocks: [...x.blocks, { scope: 'day', day }] } : x
+          );
+          text = `${e.name} סומן כלא זמין ביום ${DAY_NAMES[day]}.`;
+        }
+        const next = withAudit({ ...s, employees }, text);
+        saveState(next);
+        return next;
+      });
+    },
+    [withAudit]
+  );
+
   /* ------------------------------------------------------------------ */
   const addShiftType = useCallback(
     (name: string, start: string, end: string, category: Category) => {
@@ -526,6 +555,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       deleteEmployee,
       addBlock,
       removeBlock,
+      toggleDayAvailability,
       addShiftType,
       updateShiftType,
       deleteShiftType,
@@ -556,6 +586,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       deleteEmployee,
       addBlock,
       removeBlock,
+      toggleDayAvailability,
       addShiftType,
       updateShiftType,
       deleteShiftType,

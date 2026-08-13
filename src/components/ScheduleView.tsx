@@ -3,6 +3,7 @@ import { useScheduler } from '../SchedulerContext';
 import { assigneeLabel, instanceStatus, toMinutes } from '../engine';
 import { DAY_NAMES } from '../types';
 import type { ShiftInstance } from '../types';
+import AvailabilityGrid from './AvailabilityGrid';
 
 export default function ScheduleView() {
   const { state, calendarView, setCalendarView, openModal, setWeekLabel } = useScheduler();
@@ -51,6 +52,7 @@ export default function ScheduleView() {
         </span>
       </div>
       {calendarView ? <CalendarView /> : <TableView />}
+      <AvailabilityGrid />
     </>
   );
 }
