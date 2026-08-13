@@ -171,7 +171,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
   const fullGenerate = useCallback(() => {
     setState((s) => {
-      const generated = generateFullSchedule(s.employees, s.instances);
+      const generated = generateFullSchedule(s.employees, s.instances, s.weekStartDate);
       const next = withAudit({ ...s, instances: generated }, `נוצר סידור מלא אוטומטית עבור ${s.weekLabel}.`);
       saveState(next);
       return next;
@@ -192,7 +192,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
             changed++;
             return { ...inst, employeeId: null };
           }
-          const elig = getEligibility(e, inst, instances, inst.id);
+          const elig = getEligibility(e, inst, instances, s.weekStartDate, inst.id);
           if (!elig.eligible) {
             changed++;
             return { ...inst, employeeId: null };
@@ -204,7 +204,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       // 2) try to auto-fill empties (never touches מתגבר slots), respecting each employee's requested count
       instances = instances.map((inst) => {
         if (inst.employeeId || inst.tempWorkerName) return inst;
-        const cands = s.employees.filter((e) => getEligibility(e, inst, instances, null, 'desiredShifts').eligible);
+        const cands = s.employees.filter((e) => getEligibility(e, inst, instances, s.weekStartDate, null, 'desiredShifts').eligible);
         if (cands.length) {
           const scored = cands
             .map((e) => ({ e, score: fairnessScore(e, inst, instances) }))
@@ -276,7 +276,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
       if (employeeId) {
         const e = state.employees.find((x) => x.id === employeeId)!;
-        const elig = getEligibility(e, inst, state.instances, inst.id);
+        const elig = getEligibility(e, inst, state.instances, state.weekStartDate, inst.id);
         if (!elig.eligible && !opts?.force) {
           return { ok: false, reasons: elig.reasons.map((r) => REASON_LABELS[r.type]) };
         }
@@ -379,7 +379,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
   const applyReplacementOption = useCallback(
     (instanceId: string, optionIndex: number) => {
-      const options = findReplacements(instanceId, state.instances, state.employees, 3);
+      const options = findReplacements(instanceId, state.instances, state.employees, state.weekStartDate, 3);
       const opt = options[optionIndex];
       if (!opt) return;
       setState((s) => {
@@ -489,22 +489,27 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setState((s) => {
         const e = s.employees.find((x) => x.id === employeeId);
         if (!e) return s;
+        const week = s.weekStartDate;
+        // only drop THIS week's own day/shift blocks for that day — blocks tagged with any other
+        // week (or untagged legacy ones from before this feature existed) are left untouched, so
+        // nothing is ever erased and older weeks stay exactly as they were when you view them again
         const kept = e.blocks.filter((b) => {
+          if (b.weekStartDate !== week) return true;
           if (b.scope === 'day' && b.day === day) return false;
           if (b.scope === 'shift' && b.day === day) return false;
           return true;
         });
         const additions: EmployeeBlock[] = dayOff
-          ? [{ scope: 'day', day, reason: reason || undefined }]
-          : blockedShiftTypeIds.map((shiftTypeId) => ({ scope: 'shift', day, shiftTypeId }));
+          ? [{ scope: 'day', day, reason: reason || undefined, weekStartDate: week }]
+          : blockedShiftTypeIds.map((shiftTypeId) => ({ scope: 'shift', day, shiftTypeId, weekStartDate: week }));
         const employees = s.employees.map((x) =>
           x.id === employeeId ? { ...x, blocks: [...kept, ...additions] } : x
         );
         const text = dayOff
-          ? `${e.name}: סומן כ${reason || 'יום חופש'} ב${DAY_NAMES[day]}.`
+          ? `${e.name}: סומן כ${reason || 'יום חופש'} ב${DAY_NAMES[day]} (שבוע ${week}).`
           : blockedShiftTypeIds.length
-          ? `${e.name}: עודכנו משמרות חסומות ב${DAY_NAMES[day]} (${blockedShiftTypeIds.length}).`
-          : `${e.name}: הוסרו כל החסימות ל${DAY_NAMES[day]} (זמין לכל המשמרות).`;
+          ? `${e.name}: עודכנו משמרות חסומות ב${DAY_NAMES[day]} (${blockedShiftTypeIds.length}, שבוע ${week}).`
+          : `${e.name}: הוסרו כל החסימות ל${DAY_NAMES[day]} לשבוע ${week} (זמין לכל המשמרות באותו שבוע).`;
         const next = withAudit({ ...s, employees }, text);
         saveState(next);
         return next;

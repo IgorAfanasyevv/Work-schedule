@@ -2,6 +2,7 @@ import React from 'react';
 import { useScheduler } from '../SchedulerContext';
 import { CATEGORY_LABEL, DAY_NAMES } from '../types';
 import type { AppState, Employee } from '../types';
+import { dateForDayIndex, formatDDMM } from '../dateUtils';
 
 type CellView =
   | { kind: 'dayOff'; label: string }
@@ -9,12 +10,16 @@ type CellView =
   | { kind: 'assigned'; label: string }
   | { kind: 'blank' };
 
-function cellView(e: Employee, day: number, instances: AppState['instances']): CellView {
-  const dayOffBlock = e.blocks.find((b) => b.scope === 'day' && b.day === day);
+function cellView(e: Employee, day: number, week: string, instances: AppState['instances']): CellView {
+  // only blocks tagged for THIS week (or untagged/standing ones from the "עובדים" tab) count here —
+  // a block saved while looking at a different week stays inert and invisible on this one
+  const thisWeekBlocks = e.blocks.filter((b) => !b.weekStartDate || b.weekStartDate === week);
+
+  const dayOffBlock = thisWeekBlocks.find((b) => b.scope === 'day' && b.day === day);
   if (dayOffBlock) return { kind: 'dayOff', label: dayOffBlock.reason || 'חופש' };
 
-  const shiftBlockCount = e.blocks.filter((b) => b.scope === 'shift' && b.day === day).length;
-  const hasCategoryBlock = e.blocks.some((b) => b.scope === 'category' && (b.day === day || b.day === 'all'));
+  const shiftBlockCount = thisWeekBlocks.filter((b) => b.scope === 'shift' && b.day === day).length;
+  const hasCategoryBlock = thisWeekBlocks.some((b) => b.scope === 'category' && (b.day === day || b.day === 'all'));
   const totalPartial = shiftBlockCount + (hasCategoryBlock ? 1 : 0);
   if (totalPartial > 0) return { kind: 'partial', count: totalPartial };
 
@@ -26,15 +31,16 @@ function cellView(e: Employee, day: number, instances: AppState['instances']): C
 
 export default function AvailabilityGrid() {
   const { state, openModal } = useScheduler();
-  const { employees, instances } = state;
+  const { employees, instances, weekStartDate } = state;
 
   return (
     <div className="card" style={{ marginTop: 18 }}>
       <h3>זמינות שבועית וסיכום</h3>
       <p style={{ fontSize: 12.5, color: 'var(--text-dim)', marginTop: -6, marginBottom: 14 }}>
         לחצו על תא כדי לפתוח חלון ולסמן לאותו עובד ויום: יום חופש (כולל סיבה כמו מילואים), או משמרות
-        ספציפיות שהוא לא יכול לעבוד באותו יום. תא ריק אומר שאין שום אילוץ ידוע — הוא יתמלא לבד ברגע
-        שתסמנו משהו, או יציג את המשמרת בפועל אם כבר שובץ בסידור.
+        ספציפיות שהוא לא יכול לעבוד באותו יום. הטבלה מציגה תמיד את השבוע שנבחר למעלה — כל שבוע שומר
+        את הסימונים שלו בנפרד, כך שהם לא נמחקים כשעוברים לשבוע הבא, אבל גם לא משפיעים עליו: שבוע חדש
+        מתחיל תמיד נקי, עד שתסמנו בו משהו.
       </p>
 
       <div className="legend">
@@ -59,8 +65,11 @@ export default function AvailabilityGrid() {
               <th style={{ textAlign: 'right' }}>עובד</th>
               <th>סה"כ משמרות</th>
               <th>משמרות לילה</th>
-              {DAY_NAMES.map((d) => (
-                <th key={d}>{d}</th>
+              {DAY_NAMES.map((d, i) => (
+                <th key={d} className={i === 5 || i === 6 ? 'weekend-col' : ''}>
+                  {d}
+                  <span className="day-date">{formatDDMM(dateForDayIndex(weekStartDate, i))}</span>
+                </th>
               ))}
             </tr>
           </thead>
@@ -78,7 +87,7 @@ export default function AvailabilityGrid() {
                     {nights}/3
                   </td>
                   {DAY_NAMES.map((_, day) => {
-                    const view = cellView(e, day, instances);
+                    const view = cellView(e, day, weekStartDate, instances);
                     return (
                       <td key={day}>
                         <button

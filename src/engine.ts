@@ -104,8 +104,10 @@ export function instanceStatus(inst: ShiftInstance): InstanceStatus {
 /*  eligibility / hard constraints                                        */
 /* ---------------------------------------------------------------------- */
 
-function isBlocked(employee: Employee, instance: ShiftInstance): boolean {
+function isBlocked(employee: Employee, instance: ShiftInstance, weekStartDate: string): boolean {
   return (employee.blocks || []).some((b) => {
+    // week-scoped blocks (from the weekly availability grid) only apply to the week they were set for
+    if (b.weekStartDate && b.weekStartDate !== weekStartDate) return false;
     if (b.scope === 'day') return b.day === instance.day;
     if (b.scope === 'category')
       return (b.day === 'all' || b.day === instance.day) && b.category === instance.category;
@@ -115,6 +117,8 @@ function isBlocked(employee: Employee, instance: ShiftInstance): boolean {
 }
 
 /**
+ * @param weekStartDate ISO date (Sunday) of the week currently being scheduled/edited — required so
+ *   week-scoped availability blocks (see EmployeeBlock.weekStartDate) only apply to their own week.
  * @param capField which field on the employee acts as the hard ceiling for shift count.
  *   'maxShifts'    -> used for manual assignment / replacement search (the true hard cap)
  *   'desiredShifts'-> used by the automatic engine, which must never push someone past what they asked for
@@ -123,12 +127,13 @@ export function getEligibility(
   employee: Employee,
   instance: ShiftInstance,
   instances: ShiftInstance[],
+  weekStartDate: string,
   ignoreInstanceId?: string | null,
   capField: 'maxShifts' | 'desiredShifts' = 'maxShifts'
 ): Eligibility {
   const reasons: Eligibility['reasons'] = [];
 
-  if (isBlocked(employee, instance)) reasons.push({ type: 'blocked' });
+  if (isBlocked(employee, instance, weekStartDate)) reasons.push({ type: 'blocked' });
 
   const mine = instances.filter(
     (i) => i.employeeId === employee.id && i.id !== instance.id && i.id !== ignoreInstanceId
@@ -188,7 +193,7 @@ export function fairnessScore(employee: Employee, _instance: ShiftInstance, inst
 /*  full generation (Constraint Satisfaction, MRV heuristic + fairness)   */
 /* ---------------------------------------------------------------------- */
 
-export function generateFullSchedule(employees: Employee[], template: ShiftInstance[]): ShiftInstance[] {
+export function generateFullSchedule(employees: Employee[], template: ShiftInstance[], weekStartDate: string): ShiftInstance[] {
   const instances: ShiftInstance[] = template.map((i) => ({
     ...i,
     employeeId: null,
@@ -204,7 +209,7 @@ export function generateFullSchedule(employees: Employee[], template: ShiftInsta
 
     for (const id of remaining) {
       const inst = instances.find((i) => i.id === id)!;
-      const elig = employees.filter((e) => getEligibility(e, inst, instances, null, 'desiredShifts').eligible);
+      const elig = employees.filter((e) => getEligibility(e, inst, instances, weekStartDate, null, 'desiredShifts').eligible);
       if (bestList === null || elig.length < bestList.length) {
         bestId = id;
         bestList = elig;
@@ -235,6 +240,7 @@ export function findReplacements(
   instanceId: string,
   instances: ShiftInstance[],
   employees: Employee[],
+  weekStartDate: string,
   maxOptions = 3
 ): ReplacementOption[] {
   const vacant = instances.find((i) => i.id === instanceId);
@@ -242,7 +248,7 @@ export function findReplacements(
   const options: ReplacementOption[] = [];
 
   const direct = employees
-    .map((e) => ({ e, elig: getEligibility(e, vacant, instances) }))
+    .map((e) => ({ e, elig: getEligibility(e, vacant, instances, weekStartDate) }))
     .filter((x) => x.elig.eligible)
     .map((x) => ({ e: x.e, score: fairnessScore(x.e, vacant, instances) }))
     .sort((a, b) => a.score - b.score);
@@ -253,7 +259,7 @@ export function findReplacements(
 
   if (options.length < maxOptions) {
     const blockedBySingleConflict = employees
-      .map((e) => ({ e, elig: getEligibility(e, vacant, instances) }))
+      .map((e) => ({ e, elig: getEligibility(e, vacant, instances, weekStartDate) }))
       .filter(
         (x) =>
           !x.elig.eligible &&
@@ -269,7 +275,7 @@ export function findReplacements(
       for (const c of conflictInstances) {
         const cands = employees
           .filter((a) => a.id !== e.id)
-          .map((a) => ({ a, elig2: getEligibility(a, c, instances, c.id) }))
+          .map((a) => ({ a, elig2: getEligibility(a, c, instances, weekStartDate, c.id) }))
           .filter((x) => x.elig2.eligible)
           .map((x) => ({ a: x.a, score: fairnessScore(x.a, c, instances) }))
           .sort((x, y) => x.score - y.score);
@@ -299,8 +305,8 @@ export function findReplacements(
 /*  decision explanation (section 32 of the spec)                         */
 /* ---------------------------------------------------------------------- */
 
-export function explain(employee: Employee, instance: ShiftInstance, instances: ShiftInstance[]): string {
-  const elig = getEligibility(employee, instance, instances, instance.id);
+export function explain(employee: Employee, instance: ShiftInstance, instances: ShiftInstance[], weekStartDate: string): string {
+  const elig = getEligibility(employee, instance, instances, weekStartDate, instance.id);
   if (elig.eligible) return `${employee.name} זמין וכשיר לשיבוץ במשמרת זו ללא הפרת אילוצים.`;
 
   const parts = elig.reasons.map((r) => {

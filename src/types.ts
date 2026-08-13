@@ -18,6 +18,14 @@ export interface EmployeeBlock {
   shiftTypeId?: string; // used when scope === 'shift'
   /** free-text reason shown in the weekly summary, e.g. "מילואים" / "חופש" (used when scope === 'day') */
   reason?: string;
+  /**
+   * ISO date (YYYY-MM-DD, the Sunday of that week) this block was set for. Only used for blocks
+   * created from the weekly availability grid (scope 'day'/'shift'): those apply ONLY to the week
+   * they were entered for, so a new week always starts blank and old weeks' choices stay in
+   * history instead of leaking forward or getting overwritten. Blocks with no weekStartDate (e.g.
+   * the standing constraints added from the "עובדים" tab) are treated as always-on, every week.
+   */
+  weekStartDate?: string;
 }
 
 export interface Employee {

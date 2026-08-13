@@ -10,14 +10,14 @@ export default function ReplacementsModal({ instanceId }: { instanceId: string }
   const [tempName, setTempName] = useState('');
 
   const options = useMemo(
-    () => (inst ? findReplacements(instanceId, state.instances, state.employees, 3) : []),
+    () => (inst ? findReplacements(instanceId, state.instances, state.employees, state.weekStartDate, 3) : []),
     [inst, instanceId, state.instances, state.employees]
   );
 
   const ineligible = useMemo(() => {
     if (!inst) return [];
     return state.employees
-      .map((e) => ({ e, elig: getEligibility(e, inst, state.instances, instanceId) }))
+      .map((e) => ({ e, elig: getEligibility(e, inst, state.instances, state.weekStartDate, instanceId) }))
       .filter((x) => !x.elig.eligible);
   }, [inst, instanceId, state.employees, state.instances]);
 

@@ -66,7 +66,7 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
       return;
     }
     const e = state.employees.find((x) => x.id === inst!.employeeId)!;
-    setExplainText(explain(e, inst!, state.instances));
+    setExplainText(explain(e, inst!, state.instances, state.weekStartDate));
   }
 
   return (

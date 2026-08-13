@@ -2,18 +2,23 @@ import React, { useState } from 'react';
 import Modal from '../ui/Modal';
 import { useScheduler } from '../../SchedulerContext';
 import { ABSENCE_REASONS, DAY_NAMES } from '../../types';
+import { dateForDayIndex, formatDDMM } from '../../dateUtils';
 
 const PLAIN_DAY_OFF = 'חופש';
 
 export default function DayConstraintsModal({ employeeId, day }: { employeeId: string; day: number }) {
   const { state, setDayConstraints, closeModal } = useScheduler();
   const e = state.employees.find((x) => x.id === employeeId);
+  const week = state.weekStartDate;
+  // only blocks tagged for THIS week (or untagged/standing ones) are relevant here — a block saved
+  // for a different week is intentionally invisible/inert while looking at this one
+  const thisWeekBlocks = (e?.blocks || []).filter((b) => !b.weekStartDate || b.weekStartDate === week);
 
-  const existingDayOffBlock = e?.blocks.find((b) => b.scope === 'day' && b.day === day);
+  const existingDayOffBlock = thisWeekBlocks.find((b) => b.scope === 'day' && b.day === day);
   const existingShiftIds = new Set(
-    (e?.blocks || []).filter((b) => b.scope === 'shift' && b.day === day).map((b) => b.shiftTypeId as string)
+    thisWeekBlocks.filter((b) => b.scope === 'shift' && b.day === day).map((b) => b.shiftTypeId as string)
   );
-  const existingCategoryBlocks = (e?.blocks || []).filter(
+  const existingCategoryBlocks = thisWeekBlocks.filter(
     (b) => b.scope === 'category' && (b.day === day || b.day === 'all')
   );
 
@@ -47,7 +52,10 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
     <Modal
       title={
         <>
-          אילוצים ל{e.name} — יום {DAY_NAMES[day]}
+          אילוצים ל{e.name} — יום {DAY_NAMES[day]}{' '}
+          <span className="mono" style={{ color: 'var(--text-faint)', fontSize: 13 }}>
+            ({formatDDMM(dateForDayIndex(week, day))})
+          </span>
         </>
       }
       footer={
@@ -61,6 +69,10 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
         </>
       }
     >
+      <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 0, marginBottom: 14 }}>
+        הסימון הזה חל רק על השבוע הנוכחי שאתם צופים בו. שבועות אחרים לא נמחקים ולא מושפעים — כל שבוע
+        שומר את הסימונים שלו בנפרד.
+      </p>
       <label
         style={{
           display: 'flex',
