@@ -5,7 +5,6 @@ import ScheduleView from './components/ScheduleView';
 import MyShifts from './components/MyShifts';
 import Employees from './components/Employees';
 import ShiftTypes from './components/ShiftTypes';
-import AuditLog from './components/AuditLog';
 import ModalHost from './components/ModalHost';
 import Toasts from './components/ui/Toasts';
 
@@ -15,7 +14,6 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: 'myshifts', label: 'המשמרות שלי' },
   { id: 'employees', label: 'עובדים' },
   { id: 'shifttypes', label: 'סוגי משמרות' },
-  { id: 'audit', label: 'יומן שינויים' },
 ];
 
 function Shell() {
@@ -61,7 +59,6 @@ function Shell() {
         {tab === 'myshifts' && <MyShifts />}
         {tab === 'employees' && <Employees />}
         {tab === 'shifttypes' && <ShiftTypes />}
-        {tab === 'audit' && <AuditLog />}
       </div>
       <ModalHost />
       <Toasts />

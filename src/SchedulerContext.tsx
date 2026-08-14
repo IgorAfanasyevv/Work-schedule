@@ -22,7 +22,7 @@ import { defaultState, loadState, saveState, subscribeRemoteState } from './stat
 import { isFirebaseConfigured } from './firebaseClient';
 import { addDaysISO, mostRecentSundayISO } from './dateUtils';
 
-export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes' | 'audit';
+export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes';
 
 export type ModalState =
   | { type: 'shiftDetail'; instanceId: string }
