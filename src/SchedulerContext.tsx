@@ -208,7 +208,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         if (inst.employeeId || inst.tempWorkerName) return inst;
         const cands = s.employees.filter((e) => getEligibility(e, inst, instances, s.weekStartDate, null, 'desiredShifts').eligible);
         if (cands.length) {
-          const scored = cands.map((e) => ({ item: e, score: fairnessScore(e, inst, instances) }));
+          const scored = cands.map((e) => ({ item: e, score: fairnessScore(e, inst, instances, s.employees) }));
           changed++;
           return { ...inst, employeeId: pickAmongBest(scored).id };
         }

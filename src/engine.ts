@@ -179,12 +179,58 @@ export function getEligibility(
 /*  fairness scoring (lower = better candidate)                           */
 /* ---------------------------------------------------------------------- */
 
-export function fairnessScore(employee: Employee, instance: ShiftInstance, instances: ShiftInstance[]): number {
+/**
+ * Lower score = better candidate for this slot.
+ *
+ * This is a PROPORTIONAL fairness model, not just "who's furthest from their own target":
+ * for every shift category (morning/afternoon/night/other), each employee has a "fair share" of
+ * that category's total slots this week, proportional to how much they want to work overall
+ * (desiredShifts) relative to the whole team. Someone who opened up more availability (a higher
+ * desiredShifts) is expected to - and will - absorb proportionally more of every category,
+ * nights included, which is exactly what lets a flexible person relieve less-available
+ * coworkers instead of the algorithm just splitting things evenly head-count-wise.
+ *
+ * Without this, two equally-available people could end up with very different night counts
+ * purely because of processing order: once someone hits their own overall target they stop being
+ * prioritized for anything else, even if their personal night count is still low compared to
+ * peers who are equally free to work nights.
+ */
+export function fairnessScore(
+  employee: Employee,
+  instance: ShiftInstance,
+  instances: ShiftInstance[],
+  employees: Employee[]
+): number {
   const mine = instances.filter((i) => i.employeeId === employee.id);
   const count = mine.length;
-  const deficit = employee.desiredShifts - count;
-  const nights = mine.filter((i) => i.category === 'night').length;
-  const weekends = mine.filter((i) => i.day === 5 || i.day === 6).length;
+
+  // RATIOS, not raw counts - this is the key fix. With raw counts, someone who simply asked for a
+  // much bigger number of shifts than everyone else would have a numerically huge "deficit" that
+  // swamped every other consideration (category variety, streak prevention), causing them to
+  // dominate one single shift type across the whole week instead of getting a fair mix. Using
+  // "how full is my own target" as a 0..1-ish ratio keeps everyone on the same scale regardless of
+  // how big their personal desiredShifts is, while still correctly letting someone with a bigger
+  // target keep absorbing more shifts for longer after less-available coworkers fill up.
+  const overallRatio = employee.desiredShifts > 0 ? count / employee.desiredShifts : 1;
+
+  const totalDesired = employees.reduce((sum, e) => sum + e.desiredShifts, 0) || 1;
+  const teamShare = employee.desiredShifts / totalDesired;
+
+  // same idea per shift category (morning/afternoon/night/other): each employee's fair share of a
+  // category is proportional to their share of the whole team's desired workload, and we compare
+  // their current count against that share as a ratio - the main lever for balancing e.g. night
+  // counts fairly regardless of how big anyone's overall target is
+  const totalOfThisCategory = instances.filter((i) => i.category === instance.category).length;
+  const categoryCount = mine.filter((i) => i.category === instance.category).length;
+  const fairShareOfCategory = teamShare * totalOfThisCategory;
+  const categoryRatio = fairShareOfCategory > 0 ? categoryCount / fairShareOfCategory : categoryCount > 0 ? 2 : 0;
+
+  // same for weekend shifts specifically
+  const totalWeekendSlots = instances.filter((i) => i.day === 5 || i.day === 6).length;
+  const weekendCount = mine.filter((i) => i.day === 5 || i.day === 6).length;
+  const fairShareOfWeekend = teamShare * totalWeekendSlots;
+  const weekendRatio = fairShareOfWeekend > 0 ? weekendCount / fairShareOfWeekend : weekendCount > 0 ? 2 : 0;
+
   const twelveHr = mine.filter((i) => i.durationHours >= 11.5).length;
 
   // Strongly discourage doing the SAME shift category (morning/afternoon/night) on the day right
@@ -195,11 +241,7 @@ export function fairnessScore(employee: Employee, instance: ShiftInstance, insta
     (i) => i.category === instance.category && Math.abs(i.day - instance.day) === 1
   ).length;
 
-  // Smaller ongoing penalty for stacking up the SAME category repeatedly across the week at all,
-  // even non-adjacent - spreads shift types around instead of making someone "the morning person"
-  const sameCategoryThisWeek = mine.filter((i) => i.category === instance.category).length;
-
-  return -deficit * 10 + nights * 3 + weekends * 2 + twelveHr * 1 + sameCategoryAdjacentDay * 14 + sameCategoryThisWeek * 2;
+  return overallRatio * 100 + categoryRatio * 40 + weekendRatio * 15 + twelveHr * 1 + sameCategoryAdjacentDay * 14;
 }
 
 /** among several candidates tied for the best (lowest) fairness score, pick one at random instead
@@ -246,7 +288,7 @@ export function generateFullSchedule(employees: Employee[], template: ShiftInsta
       continue;
     }
 
-    const scored = bestList.map((e) => ({ item: e, score: fairnessScore(e, inst, instances) }));
+    const scored = bestList.map((e) => ({ item: e, score: fairnessScore(e, inst, instances, employees) }));
     inst.employeeId = pickAmongBest(scored).id;
     remaining = remaining.filter((id) => id !== bestId);
   }
@@ -272,7 +314,7 @@ export function findReplacements(
   const direct = employees
     .map((e) => ({ e, elig: getEligibility(e, vacant, instances, weekStartDate) }))
     .filter((x) => x.elig.eligible)
-    .map((x) => ({ e: x.e, score: fairnessScore(x.e, vacant, instances) }))
+    .map((x) => ({ e: x.e, score: fairnessScore(x.e, vacant, instances, employees) }))
     .sort((a, b) => a.score - b.score);
 
   direct.forEach((d) => {
@@ -299,7 +341,7 @@ export function findReplacements(
           .filter((a) => a.id !== e.id)
           .map((a) => ({ a, elig2: getEligibility(a, c, instances, weekStartDate, c.id) }))
           .filter((x) => x.elig2.eligible)
-          .map((x) => ({ a: x.a, score: fairnessScore(x.a, c, instances) }))
+          .map((x) => ({ a: x.a, score: fairnessScore(x.a, c, instances, employees) }))
           .sort((x, y) => x.score - y.score);
 
         if (!cands.length) {
@@ -313,7 +355,7 @@ export function findReplacements(
         options.push({
           changeCount: 1 + subChanges.length,
           changes: [{ instanceId: vacant.id, toEmployeeId: e.id }, ...subChanges],
-          score: fairnessScore(e, vacant, instances),
+          score: fairnessScore(e, vacant, instances, employees),
         });
       }
     });
