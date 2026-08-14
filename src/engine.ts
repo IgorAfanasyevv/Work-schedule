@@ -179,14 +179,37 @@ export function getEligibility(
 /*  fairness scoring (lower = better candidate)                           */
 /* ---------------------------------------------------------------------- */
 
-export function fairnessScore(employee: Employee, _instance: ShiftInstance, instances: ShiftInstance[]): number {
+export function fairnessScore(employee: Employee, instance: ShiftInstance, instances: ShiftInstance[]): number {
   const mine = instances.filter((i) => i.employeeId === employee.id);
   const count = mine.length;
   const deficit = employee.desiredShifts - count;
   const nights = mine.filter((i) => i.category === 'night').length;
   const weekends = mine.filter((i) => i.day === 5 || i.day === 6).length;
   const twelveHr = mine.filter((i) => i.durationHours >= 11.5).length;
-  return -deficit * 10 + nights * 3 + weekends * 2 + twelveHr * 1;
+
+  // Strongly discourage doing the SAME shift category (morning/afternoon/night) on the day right
+  // before or right after this one - this is what stops someone from ending up on "morning" five
+  // days in a row. It's a soft penalty, not a hard rule: still allowed if nobody else can fill the
+  // slot, just deprioritized against anyone who'd bring more variety.
+  const sameCategoryAdjacentDay = mine.filter(
+    (i) => i.category === instance.category && Math.abs(i.day - instance.day) === 1
+  ).length;
+
+  // Smaller ongoing penalty for stacking up the SAME category repeatedly across the week at all,
+  // even non-adjacent - spreads shift types around instead of making someone "the morning person"
+  const sameCategoryThisWeek = mine.filter((i) => i.category === instance.category).length;
+
+  return -deficit * 10 + nights * 3 + weekends * 2 + twelveHr * 1 + sameCategoryAdjacentDay * 14 + sameCategoryThisWeek * 2;
+}
+
+/** among several candidates tied for the best (lowest) fairness score, pick one at random instead
+ *  of always the same one - a fully deterministic tie-break is what made one person systematically
+ *  "win" every tied slot and dominate a shift type across the week. */
+export function pickAmongBest<T>(scored: { item: T; score: number }[]): T {
+  const sorted = [...scored].sort((a, b) => a.score - b.score);
+  const bestScore = sorted[0].score;
+  const tied = sorted.filter((x) => x.score === bestScore);
+  return tied[Math.floor(Math.random() * tied.length)].item;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -223,9 +246,8 @@ export function generateFullSchedule(employees: Employee[], template: ShiftInsta
       continue;
     }
 
-    const scored = bestList.map((e) => ({ e, score: fairnessScore(e, inst, instances) }));
-    scored.sort((a, b) => a.score - b.score);
-    inst.employeeId = scored[0].e.id;
+    const scored = bestList.map((e) => ({ item: e, score: fairnessScore(e, inst, instances) }));
+    inst.employeeId = pickAmongBest(scored).id;
     remaining = remaining.filter((id) => id !== bestId);
   }
 

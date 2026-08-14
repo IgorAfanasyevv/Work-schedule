@@ -15,6 +15,7 @@ import {
   generateFullSchedule,
   getEligibility,
   makeInstance,
+  pickAmongBest,
   uid,
 } from './engine';
 import { defaultState, loadState, saveState, subscribeRemoteState } from './state';
@@ -206,11 +207,9 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         if (inst.employeeId || inst.tempWorkerName) return inst;
         const cands = s.employees.filter((e) => getEligibility(e, inst, instances, s.weekStartDate, null, 'desiredShifts').eligible);
         if (cands.length) {
-          const scored = cands
-            .map((e) => ({ e, score: fairnessScore(e, inst, instances) }))
-            .sort((a, b) => a.score - b.score);
+          const scored = cands.map((e) => ({ item: e, score: fairnessScore(e, inst, instances) }));
           changed++;
-          return { ...inst, employeeId: scored[0].e.id };
+          return { ...inst, employeeId: pickAmongBest(scored).id };
         }
         return inst;
       });
