@@ -126,8 +126,10 @@ export default function ScheduleView() {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
         <button
           className="btn danger sm"
+          title="מנקה רק מי משובץ לאיזו משמרת. לא נוגע להעדפות/חסימות של העובדים."
           onClick={() => {
-            if (confirm('לנקות את כל השיבוצים בסידור הנוכחי? הפעולה הזו לא הפיכה.')) clearSchedule();
+            if (confirm('לנקות את כל השיבוצים בסידור הנוכחי? הפעולה הזו לא הפיכה (העדפות העובדים לא יימחקו).'))
+              clearSchedule();
           }}
         >
           🗑 נקה סידור לגמרי

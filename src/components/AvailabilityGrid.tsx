@@ -30,17 +30,30 @@ function cellView(e: Employee, day: number, week: string, instances: AppState['i
 }
 
 export default function AvailabilityGrid() {
-  const { state, openModal } = useScheduler();
+  const { state, openModal, clearWeekPreferences } = useScheduler();
   const { employees, instances, weekStartDate } = state;
 
   return (
     <div className="card" style={{ marginTop: 18 }}>
-      <h3>זמינות שבועית וסיכום</h3>
-      <p style={{ fontSize: 12.5, color: 'var(--text-dim)', marginTop: -6, marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <h3 style={{ marginBottom: 0 }}>זמינות שבועית וסיכום</h3>
+        <button
+          className="btn danger sm"
+          onClick={() => {
+            if (confirm('לנקות את כל ההעדפות שסומנו לשבוע הנוכחי (לכל העובדים)? זה לא נוגע לשיבוצים בפועל ולא לשבועות אחרים.')) {
+              clearWeekPreferences();
+            }
+          }}
+        >
+          🗑 נקה העדפות שבוע זה
+        </button>
+      </div>
+      <p style={{ fontSize: 12.5, color: 'var(--text-dim)', marginTop: 10, marginBottom: 14 }}>
         לחצו על תא כדי לפתוח חלון ולסמן לאותו עובד ויום: יום חופש (כולל סיבה כמו מילואים), או משמרות
         ספציפיות שהוא לא יכול לעבוד באותו יום. הטבלה מציגה תמיד את השבוע שנבחר למעלה — כל שבוע שומר
         את הסימונים שלו בנפרד, כך שהם לא נמחקים כשעוברים לשבוע הבא, אבל גם לא משפיעים עליו: שבוע חדש
-        מתחיל תמיד נקי, עד שתסמנו בו משהו.
+        מתחיל תמיד נקי, עד שתסמנו בו משהו. כפתור "נקה סידור לגמרי" למעלה מנקה רק את השיבוצים בפועל —
+        הוא לעולם לא מוחק העדפות שסימנתם כאן.
       </p>
 
       <div className="legend">

@@ -65,6 +65,7 @@ interface Ctx {
   fullGenerate: () => void;
   localRecalc: () => void;
   clearSchedule: () => void;
+  clearWeekPreferences: () => void;
 
   assignEmployee: (instanceId: string, employeeId: string | null, opts?: { force?: boolean }) => { ok: boolean; reasons?: string[] };
   assignTemp: (instanceId: string, name: string) => void;
@@ -260,11 +261,29 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         manual: false,
         exception: false,
       }));
-      const next = withAudit({ ...s, instances }, `כל השיבוצים בסידור נוקו (${s.weekLabel}).`);
+      const next = withAudit({ ...s, instances }, `כל השיבוצים בסידור נוקו (${s.weekLabel}). העדפות העובדים נשארו ללא שינוי.`);
       saveState(next);
       return next;
     });
-    toast('הסידור נוקה — כל המשמרות ריקות כעת');
+    toast('הסידור נוקה — כל המשמרות ריקות כעת (העדפות העובדים לא נמחקו)');
+  }, [withAudit, toast]);
+
+  /** clears only THIS week's day/shift preferences (set from the availability grid) for every
+   *  employee — separate from clearSchedule on purpose, since wiping the schedule and wiping
+   *  people's stated availability are two different actions. Standing blocks from the "עובדים"
+   *  tab and other weeks' preferences are untouched. */
+  const clearWeekPreferences = useCallback(() => {
+    setState((s) => {
+      const week = s.weekStartDate;
+      const employees = s.employees.map((e) => ({
+        ...e,
+        blocks: e.blocks.filter((b) => b.weekStartDate !== week),
+      }));
+      const next = withAudit({ ...s, employees }, `כל ההעדפות של השבוע (${week}) נוקו עבור כל העובדים.`);
+      saveState(next);
+      return next;
+    });
+    toast('ההעדפות של השבוע הנוכחי נוקו');
   }, [withAudit, toast]);
 
   /* ------------------------------------------------------------------ */
@@ -686,6 +705,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       fullGenerate,
       localRecalc,
       clearSchedule,
+      clearWeekPreferences,
       assignEmployee,
       assignTemp,
       removeTemp,
@@ -725,6 +745,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       fullGenerate,
       localRecalc,
       clearSchedule,
+      clearWeekPreferences,
       assignEmployee,
       assignTemp,
       removeTemp,
