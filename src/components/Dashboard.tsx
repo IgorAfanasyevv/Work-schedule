@@ -4,7 +4,7 @@ import { isAssigned } from '../engine';
 import { DAY_NAMES } from '../types';
 
 export default function Dashboard() {
-  const { state, fullGenerate, localRecalc, openModal } = useScheduler();
+  const { state, fullGenerate, localRecalc, openModal, isGenerating } = useScheduler();
   const { instances, employees } = state;
 
   const total = instances.length;
@@ -21,11 +21,11 @@ export default function Dashboard() {
       <div className="topbar">
         <h2>לוח בקרה</h2>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn" onClick={localRecalc}>
-            🔄 חשב מחדש
+          <button className="btn" onClick={localRecalc} disabled={isGenerating}>
+            {isGenerating ? '⏳ מחשב...' : '🔄 חשב מחדש'}
           </button>
-          <button className="btn primary" onClick={fullGenerate}>
-            ✨ צור סידור מלא
+          <button className="btn primary" onClick={fullGenerate} disabled={isGenerating}>
+            {isGenerating ? '⏳ יוצר סידור...' : '✨ צור סידור מלא'}
           </button>
         </div>
       </div>

@@ -25,6 +25,8 @@ function Shell() {
     );
   }
 
+  const unfilledCount = state.instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+
   return (
     <div id="app">
       <div className="sidebar">
@@ -38,9 +40,27 @@ function Shell() {
             key={item.id}
             className={`nav-btn ${tab === item.id ? 'active' : ''}`}
             onClick={() => setTab(item.id)}
+            style={{ position: 'relative' }}
           >
             <span className="dot" />
             {item.label}
+            {unfilledCount > 0 && (item.id === 'dashboard' || item.id === 'schedule') && (
+              <span
+                title={`${unfilledCount} משמרות לא מאוישות`}
+                style={{
+                  marginRight: 'auto',
+                  background: 'var(--red)',
+                  color: '#1a0d0d',
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  borderRadius: 100,
+                  padding: '1px 6px',
+                  fontFamily: 'IBM Plex Mono, monospace',
+                }}
+              >
+                {unfilledCount}
+              </span>
+            )}
           </button>
         ))}
         <div className="sidebar-foot">

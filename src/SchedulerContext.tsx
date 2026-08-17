@@ -55,6 +55,7 @@ interface Ctx {
   setAssignMode: (m: 'regular' | 'temp') => void;
   toasts: ToastItem[];
   toast: (msg: string) => void;
+  isGenerating: boolean;
   isLoaded: boolean;
   isShared: boolean;
 
@@ -107,6 +108,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [assignMode, setAssignMode] = useState<'regular' | 'temp'>('regular');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // initial load (from Supabase if configured, otherwise from this browser's localStorage)
   useEffect(() => {
@@ -172,57 +174,76 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   );
 
   const fullGenerate = useCallback(() => {
-    setState((s) => {
-      const generated = generateFullSchedule(s.employees, s.instances, s.weekStartDate);
-      const next = withAudit({ ...s, instances: generated }, `נוצר סידור מלא אוטומטית עבור ${s.weekLabel}.`);
-      saveState(next);
-      return next;
-    });
-    toast('הסידור המלא נוצר בהצלחה');
+    setIsGenerating(true);
+    // deferred so React can paint the "generating..." state before the (synchronous) computation runs
+    setTimeout(() => {
+      setState((s) => {
+        const generated = generateFullSchedule(s.employees, s.instances, s.weekStartDate);
+        const unfilled = generated.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+        const text =
+          unfilled > 0
+            ? `נוצר סידור מלא עבור ${s.weekLabel} — אך ${unfilled} משמרות נשארו לא מאוישות (אין עובד זמין/מתאים).`
+            : `נוצר סידור מלא אוטומטית עבור ${s.weekLabel}. כל המשמרות מאוישות.`;
+        const next = withAudit({ ...s, instances: generated }, text);
+        saveState(next);
+        toast(unfilled > 0 ? `הסידור נוצר — ${unfilled} משמרות נשארו ללא איוש ⚠️` : 'הסידור המלא נוצר בהצלחה — כל המשמרות מאוישות ✓');
+        return next;
+      });
+      setIsGenerating(false);
+    }, 20);
   }, [withAudit, toast]);
 
   const localRecalc = useCallback(() => {
-    setState((s) => {
-      let changed = 0;
-      let instances = s.instances.map((inst) => ({ ...inst }));
+    setIsGenerating(true);
+    setTimeout(() => {
+      setState((s) => {
+        let changed = 0;
+        let instances = s.instances.map((inst) => ({ ...inst }));
 
-      // 1) unassign anyone who is now in hard-constraint violation (unless explicitly flagged as an approved exception)
-      instances = instances.map((inst) => {
-        if (inst.employeeId && !inst.exception) {
-          const e = s.employees.find((x) => x.id === inst.employeeId);
-          if (!e) {
-            changed++;
-            return { ...inst, employeeId: null };
+        // 1) unassign anyone who is now in hard-constraint violation (unless explicitly flagged as an approved exception)
+        instances = instances.map((inst) => {
+          if (inst.employeeId && !inst.exception) {
+            const e = s.employees.find((x) => x.id === inst.employeeId);
+            if (!e) {
+              changed++;
+              return { ...inst, employeeId: null };
+            }
+            const elig = getEligibility(e, inst, instances, s.weekStartDate, inst.id);
+            if (!elig.eligible) {
+              changed++;
+              return { ...inst, employeeId: null };
+            }
           }
-          const elig = getEligibility(e, inst, instances, s.weekStartDate, inst.id);
-          if (!elig.eligible) {
+          return inst;
+        });
+
+        // 2) try to auto-fill empties (never touches מתגבר slots), respecting each employee's requested count
+        instances = instances.map((inst) => {
+          if (inst.employeeId || inst.tempWorkerName) return inst;
+          const cands = s.employees.filter((e) => getEligibility(e, inst, instances, s.weekStartDate, null, 'desiredShifts').eligible);
+          if (cands.length) {
+            const scored = cands.map((e) => ({ item: e, score: fairnessScore(e, inst, instances, s.employees) }));
             changed++;
-            return { ...inst, employeeId: null };
+            return { ...inst, employeeId: pickAmongBest(scored).id };
           }
-        }
-        return inst;
-      });
+          return inst;
+        });
 
-      // 2) try to auto-fill empties (never touches מתגבר slots), respecting each employee's requested count
-      instances = instances.map((inst) => {
-        if (inst.employeeId || inst.tempWorkerName) return inst;
-        const cands = s.employees.filter((e) => getEligibility(e, inst, instances, s.weekStartDate, null, 'desiredShifts').eligible);
-        if (cands.length) {
-          const scored = cands.map((e) => ({ item: e, score: fairnessScore(e, inst, instances, s.employees) }));
-          changed++;
-          return { ...inst, employeeId: pickAmongBest(scored).id };
-        }
-        return inst;
+        const unfilled = instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+        const next = withAudit(
+          { ...s, instances },
+          `בוצע חישוב מקומי: ${changed} שיבוצים עודכנו. ${unfilled > 0 ? `${unfilled} משמרות נשארו לא מאוישות.` : 'כל המשמרות מאוישות.'}`
+        );
+        saveState(next);
+        toast(
+          unfilled > 0
+            ? `חישוב מקומי בוצע — ${changed} שינויים, אך ${unfilled} משמרות עדיין לא מאוישות ⚠️`
+            : `חישוב מקומי בוצע — ${changed > 0 ? changed + ' שינויים' : 'אין שינויים נדרשים'}, כל המשמרות מאוישות ✓`
+        );
+        return next;
       });
-
-      const next = withAudit(
-        { ...s, instances },
-        `בוצע חישוב מקומי: ${changed} שיבוצים עודכנו, שאר הסידור נשאר ללא שינוי.`
-      );
-      saveState(next);
-      toast(changed > 0 ? `חישוב מקומי בוצע — ${changed} שינויים` : 'חישוב מקומי בוצע — אין שינויים נדרשים');
-      return next;
-    });
+      setIsGenerating(false);
+    }, 20);
   }, [withAudit, toast]);
 
   const navigateWeek = useCallback((direction: -1 | 1) => {
@@ -696,6 +717,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setAssignMode,
       toasts,
       toast,
+      isGenerating,
       isLoaded,
       isShared: isFirebaseConfigured,
       setWeekLabel,
@@ -737,6 +759,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       assignMode,
       toasts,
       toast,
+      isGenerating,
       isLoaded,
       setWeekLabel,
       navigateWeek,

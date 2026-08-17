@@ -99,6 +99,8 @@ export default function ScheduleView() {
         </div>
       </div>
 
+      <GapBanner />
+
       <div className="legend">
         <span>
           <i style={{ background: 'var(--green)' }} />
@@ -141,15 +143,47 @@ export default function ScheduleView() {
   );
 }
 
+function GapBanner() {
+  const { state, openModal } = useScheduler();
+  const gaps = state.instances.filter((i) => !i.employeeId && !i.tempWorkerName).sort((a, b) => a.day - b.day);
+  if (gaps.length === 0) return null;
+
+  return (
+    <div
+      className="card"
+      style={{ borderColor: 'var(--red)', background: 'rgba(239,91,91,.07)', padding: '14px 18px', marginBottom: 16 }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 18 }}>🔴</span>
+        <b style={{ fontSize: 14.5 }}>
+          יש {gaps.length} משמרות לא מאוישות בסידור הנוכחי — יש "חורים" שדורשים טיפול
+        </b>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {gaps.map((g) => (
+          <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+            <span>
+              ⛔ {DAY_NAMES[g.day]} · {g.name} · {g.start}–{g.end}
+            </span>
+            <button className="btn sm" onClick={() => openModal({ type: 'replacements', instanceId: g.id })}>
+              מצא מחליף
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function HeaderActions() {
-  const { localRecalc, fullGenerate } = useScheduler();
+  const { localRecalc, fullGenerate, isGenerating } = useScheduler();
   return (
     <>
-      <button className="btn" onClick={localRecalc}>
-        🔄 חשב מחדש
+      <button className="btn" onClick={localRecalc} disabled={isGenerating}>
+        {isGenerating ? '⏳ מחשב...' : '🔄 חשב מחדש'}
       </button>
-      <button className="btn primary" onClick={fullGenerate}>
-        ✨ צור סידור מלא
+      <button className="btn primary" onClick={fullGenerate} disabled={isGenerating}>
+        {isGenerating ? '⏳ יוצר סידור...' : '✨ צור סידור מלא'}
       </button>
     </>
   );
