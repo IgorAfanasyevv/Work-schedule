@@ -4,8 +4,8 @@ import { isAssigned } from '../engine';
 import { DAY_NAMES } from '../types';
 
 export default function Dashboard() {
-  const { state, fullGenerate, localRecalc, openModal, isGenerating } = useScheduler();
-  const { instances, employees } = state;
+  const { state, instances, fullGenerate, localRecalc, openModal, isGenerating } = useScheduler();
+  const { employees } = state;
 
   const total = instances.length;
   const filled = instances.filter((i) => isAssigned(i)).length;

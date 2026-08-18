@@ -4,8 +4,8 @@ import { instanceStatus } from '../engine';
 import { DAY_NAMES } from '../types';
 
 export default function MyShifts() {
-  const { state, selectedEmployeeId, setSelectedEmployeeId } = useScheduler();
-  const { employees, instances } = state;
+  const { state, instances, selectedEmployeeId, setSelectedEmployeeId } = useScheduler();
+  const { employees } = state;
 
   useEffect(() => {
     if (!selectedEmployeeId && employees.length) setSelectedEmployeeId(employees[0].id);

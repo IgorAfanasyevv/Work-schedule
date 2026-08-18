@@ -4,8 +4,8 @@ import { useScheduler } from '../../SchedulerContext';
 import { ABSENCE_REASONS, DAY_NAMES } from '../../types';
 
 export default function MarkUnavailableModal({ instanceId }: { instanceId: string }) {
-  const { state, markUnavailable, closeModal, openModal } = useScheduler();
-  const inst = state.instances.find((i) => i.id === instanceId);
+  const { state, instances, markUnavailable, closeModal, openModal } = useScheduler();
+  const inst = instances.find((i) => i.id === instanceId);
   const [reason, setReason] = useState<string>(ABSENCE_REASONS[0]);
   if (!inst) return null;
 

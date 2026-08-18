@@ -28,23 +28,31 @@ export function defaultEmployees(): Employee[] {
 export function defaultState(): AppState {
   const shiftTypes = defaultShiftTypes();
   const employees = defaultEmployees();
-  const instances = buildTemplateInstances(shiftTypes);
+  const weekStartDate = mostRecentSundayISO();
   return {
     weekLabel: 'שבוע נוכחי',
-    weekStartDate: mostRecentSundayISO(),
+    weekStartDate,
     shiftTypes,
     employees,
-    instances,
+    weeks: { [weekStartDate]: buildTemplateInstances(shiftTypes) },
     auditLog: [],
   };
 }
 
-/** fills in fields that older saved states (from before a feature existed) might be missing */
-function withMigrations(s: AppState): AppState {
-  return {
-    ...s,
-    weekStartDate: s.weekStartDate || mostRecentSundayISO(),
-  };
+/** fills in fields that older saved states (from before a feature existed) might be missing,
+ *  including the old-style single flat `instances` array from before per-week storage existed */
+function withMigrations(raw: AppState & { instances?: unknown }): AppState {
+  const weekStartDate = raw.weekStartDate || mostRecentSundayISO();
+  let weeks = raw.weeks;
+  if (!weeks) {
+    // pre-migration shape: a single shared `instances` array used for every week. Preserve it as
+    // this week's data (better than silently discarding real assignments) - every other week will
+    // simply start fresh from now on, which is exactly the per-week behavior going forward.
+    const legacyInstances = Array.isArray(raw.instances) ? (raw.instances as AppState['weeks'][string]) : [];
+    weeks = { [weekStartDate]: legacyInstances };
+  }
+  const { instances: _drop, ...rest } = raw;
+  return { ...rest, weekStartDate, weeks };
 }
 
 /* ------------------------------------------------------------------ */

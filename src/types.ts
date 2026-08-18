@@ -64,7 +64,13 @@ export interface AppState {
   weekStartDate: string;
   shiftTypes: ShiftType[];
   employees: Employee[];
-  instances: ShiftInstance[];
+  /**
+   * Each week's actual shift schedule, keyed by that week's Sunday (ISO date) - completely
+   * separate data per week, so generating/editing/clearing one week never touches another.
+   * A week that hasn't been visited yet simply has no entry here; the app creates a fresh blank
+   * one (from the current shiftTypes) the first time you navigate to it.
+   */
+  weeks: Record<string, ShiftInstance[]>;
   auditLog: AuditEntry[];
 }
 

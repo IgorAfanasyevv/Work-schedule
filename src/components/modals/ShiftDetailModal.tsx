@@ -15,6 +15,7 @@ const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
 export default function ShiftDetailModal({ instanceId }: { instanceId: string }) {
   const {
     state,
+    instances,
     assignMode,
     setAssignMode,
     assignEmployee,
@@ -24,7 +25,7 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
     closeModal,
     openModal,
   } = useScheduler();
-  const inst = state.instances.find((i) => i.id === instanceId);
+  const inst = instances.find((i) => i.id === instanceId);
   const [selectedEmp, setSelectedEmp] = useState<string>(inst?.employeeId ?? '');
   const [tempName, setTempName] = useState<string>(inst?.tempWorkerName ?? '');
   const [feedback, setFeedback] = useState<{ reasons: string[] } | null>(null);
@@ -66,7 +67,7 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
       return;
     }
     const e = state.employees.find((x) => x.id === inst!.employeeId)!;
-    setExplainText(explain(e, inst!, state.instances, state.weekStartDate));
+    setExplainText(explain(e, inst!, instances, state.weekStartDate));
   }
 
   return (

@@ -144,8 +144,8 @@ export default function ScheduleView() {
 }
 
 function GapBanner() {
-  const { state, openModal } = useScheduler();
-  const gaps = state.instances.filter((i) => !i.employeeId && !i.tempWorkerName).sort((a, b) => a.day - b.day);
+  const { instances, openModal } = useScheduler();
+  const gaps = instances.filter((i) => !i.employeeId && !i.tempWorkerName).sort((a, b) => a.day - b.day);
   if (gaps.length === 0) return null;
 
   return (
@@ -198,7 +198,7 @@ function statusClass(status: ReturnType<typeof instanceStatus>): string {
 }
 
 function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boolean }) {
-  const { state, openModal, setAssignMode, deleteInstance } = useScheduler();
+  const { state, instances, openModal, setAssignMode, deleteInstance } = useScheduler();
   const status = instanceStatus(inst);
   const label = assigneeLabel(inst, state.employees);
 
@@ -291,8 +291,8 @@ function DaySlotCell({ day, stId, instances }: { day: number; stId: string; inst
 }
 
 function TableView() {
-  const { state } = useScheduler();
-  const { instances, shiftTypes, weekStartDate } = state;
+  const { state, instances } = useScheduler();
+  const { shiftTypes, weekStartDate } = state;
 
   const rowKeys: string[] = [];
   const seen = new Set<string>();
@@ -348,12 +348,12 @@ function TableView() {
 }
 
 function CalendarView() {
-  const { state, openModal, setAssignMode } = useScheduler();
+  const { state, instances, openModal, setAssignMode } = useScheduler();
 
   return (
     <>
       {DAY_NAMES.map((dayName, d) => {
-        const dayInsts = state.instances.filter((i) => i.day === d).sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+        const dayInsts = instances.filter((i) => i.day === d).sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
         const isWeekend = d === 5 || d === 6;
         return (
           <div className="timeline-day" key={d}>

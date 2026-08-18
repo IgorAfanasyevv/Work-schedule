@@ -21,6 +21,7 @@ import {
 import { defaultState, loadState, saveState, subscribeRemoteState } from './state';
 import { isFirebaseConfigured } from './firebaseClient';
 import { addDaysISO, mostRecentSundayISO } from './dateUtils';
+import { currentInstances, withCurrentInstances, ensureWeekSeeded } from './weekStore';
 
 export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes';
 
@@ -42,6 +43,8 @@ interface ToastItem {
 
 interface Ctx {
   state: AppState;
+  /** the current week's shift schedule only — derived from state.weeks[state.weekStartDate] */
+  instances: ShiftInstance[];
   tab: Tab;
   setTab: (t: Tab) => void;
   modal: ModalState;
@@ -115,7 +118,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     loadState().then((s) => {
       if (!cancelled) {
-        setState(s);
+        setState(ensureWeekSeeded(s, s.weekStartDate));
         setIsLoaded(true);
       }
     });
@@ -127,7 +130,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   // live updates from other tabs/users when Supabase is configured
   useEffect(() => {
     if (!isFirebaseConfigured) return;
-    const unsubscribe = subscribeRemoteState((incoming) => setState(incoming));
+    const unsubscribe = subscribeRemoteState((incoming) => setState((prev) => ensureWeekSeeded(incoming, prev.weekStartDate)));
     return unsubscribe;
   }, []);
 
@@ -178,13 +181,13 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     // deferred so React can paint the "generating..." state before the (synchronous) computation runs
     setTimeout(() => {
       setState((s) => {
-        const generated = generateFullSchedule(s.employees, s.instances, s.weekStartDate);
+        const generated = generateFullSchedule(s.employees, currentInstances(s), s.weekStartDate);
         const unfilled = generated.filter((i) => !i.employeeId && !i.tempWorkerName).length;
         const text =
           unfilled > 0
             ? `נוצר סידור מלא עבור ${s.weekLabel} — אך ${unfilled} משמרות נשארו לא מאוישות (אין עובד זמין/מתאים).`
             : `נוצר סידור מלא אוטומטית עבור ${s.weekLabel}. כל המשמרות מאוישות.`;
-        const next = withAudit({ ...s, instances: generated }, text);
+        const next = withAudit(withCurrentInstances(s, generated), text);
         saveState(next);
         toast(unfilled > 0 ? `הסידור נוצר — ${unfilled} משמרות נשארו ללא איוש ⚠️` : 'הסידור המלא נוצר בהצלחה — כל המשמרות מאוישות ✓');
         return next;
@@ -198,7 +201,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => {
       setState((s) => {
         let changed = 0;
-        let instances = s.instances.map((inst) => ({ ...inst }));
+        let instances = currentInstances(s).map((inst) => ({ ...inst }));
 
         // 1) unassign anyone who is now in hard-constraint violation (unless explicitly flagged as an approved exception)
         instances = instances.map((inst) => {
@@ -231,7 +234,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
         const unfilled = instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
         const next = withAudit(
-          { ...s, instances },
+          withCurrentInstances(s, instances),
           `בוצע חישוב מקומי: ${changed} שיבוצים עודכנו. ${unfilled > 0 ? `${unfilled} משמרות נשארו לא מאוישות.` : 'כל המשמרות מאוישות.'}`
         );
         saveState(next);
@@ -248,7 +251,8 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
   const navigateWeek = useCallback((direction: -1 | 1) => {
     setState((s) => {
-      const next = { ...s, weekStartDate: addDaysISO(s.weekStartDate, direction * 7) };
+      const newWeek = addDaysISO(s.weekStartDate, direction * 7);
+      const next = ensureWeekSeeded({ ...s, weekStartDate: newWeek }, newWeek);
       saveState(next);
       return next;
     });
@@ -256,7 +260,8 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
   const goToCurrentWeek = useCallback(() => {
     setState((s) => {
-      const next = { ...s, weekStartDate: mostRecentSundayISO() };
+      const newWeek = mostRecentSundayISO();
+      const next = ensureWeekSeeded({ ...s, weekStartDate: newWeek }, newWeek);
       saveState(next);
       return next;
     });
@@ -267,7 +272,8 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     if (!dateISO) return;
     setState((s) => {
       const [y, m, d] = dateISO.split('-').map(Number);
-      const next = { ...s, weekStartDate: mostRecentSundayISO(new Date(y, m - 1, d)) };
+      const newWeek = mostRecentSundayISO(new Date(y, m - 1, d));
+      const next = ensureWeekSeeded({ ...s, weekStartDate: newWeek }, newWeek);
       saveState(next);
       return next;
     });
@@ -275,18 +281,21 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
   const clearSchedule = useCallback(() => {
     setState((s) => {
-      const instances = s.instances.map((i) => ({
+      const instances = currentInstances(s).map((i) => ({
         ...i,
         employeeId: null,
         tempWorkerName: null,
         manual: false,
         exception: false,
       }));
-      const next = withAudit({ ...s, instances }, `כל השיבוצים בסידור נוקו (${s.weekLabel}). העדפות העובדים נשארו ללא שינוי.`);
+      const next = withAudit(
+        withCurrentInstances(s, instances),
+        `כל השיבוצים בסידור של השבוע ${s.weekStartDate} נוקו. העדפות העובדים ושבועות אחרים נשארו ללא שינוי.`
+      );
       saveState(next);
       return next;
     });
-    toast('הסידור נוקה — כל המשמרות ריקות כעת (העדפות העובדים לא נמחקו)');
+    toast('הסידור של השבוע הנוכחי נוקה — כל המשמרות ריקות כעת (העדפות ושבועות אחרים לא נגעו)');
   }, [withAudit, toast]);
 
   /** clears only THIS week's day/shift preferences (set from the availability grid) for every
@@ -310,19 +319,20 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   /* ------------------------------------------------------------------ */
   const assignEmployee = useCallback(
     (instanceId: string, employeeId: string | null, opts?: { force?: boolean }): { ok: boolean; reasons?: string[] } => {
-      const inst = state.instances.find((i) => i.id === instanceId);
+      const weekInstances = currentInstances(state);
+      const inst = weekInstances.find((i) => i.id === instanceId);
       if (!inst) return { ok: false };
 
       if (employeeId) {
         const e = state.employees.find((x) => x.id === employeeId)!;
-        const elig = getEligibility(e, inst, state.instances, state.weekStartDate, inst.id);
+        const elig = getEligibility(e, inst, weekInstances, state.weekStartDate, inst.id);
         if (!elig.eligible && !opts?.force) {
           return { ok: false, reasons: elig.reasons.map((r) => REASON_LABELS[r.type]) };
         }
         const from = assigneeLabel(inst, state.employees) || 'ריק';
         const isException = !elig.eligible && !!opts?.force;
         setState((s) => {
-          const instances = s.instances.map((i) =>
+          const instances = currentInstances(s).map((i) =>
             i.id === instanceId ? { ...i, employeeId, tempWorkerName: null, manual: true, exception: isException } : i
           );
           const text = isException
@@ -330,7 +340,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
                 .map((r) => REASON_LABELS[r.type])
                 .join('; ')})`
             : `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ${empName(employeeId)} (שינוי ידני)`;
-          const next = withAudit({ ...s, instances }, text);
+          const next = withAudit(withCurrentInstances(s, instances), text);
           saveState(next);
           return next;
         });
@@ -341,11 +351,11 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       // unassign
       const from = assigneeLabel(inst, state.employees) || 'ריק';
       setState((s) => {
-        const instances = s.instances.map((i) =>
+        const instances = currentInstances(s).map((i) =>
           i.id === instanceId ? { ...i, employeeId: null, tempWorkerName: null, manual: true, exception: false } : i
         );
         const next = withAudit(
-          { ...s, instances },
+          withCurrentInstances(s, instances),
           `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ריק (שינוי ידני)`
         );
         saveState(next);
@@ -354,20 +364,20 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       toast('השיבוץ נשמר');
       return { ok: true };
     },
-    [state.instances, state.employees, withAudit, toast, empName]
+    [state, withAudit, toast, empName]
   );
 
   const assignTemp = useCallback(
     (instanceId: string, name: string) => {
-      const inst = state.instances.find((i) => i.id === instanceId);
+      const inst = currentInstances(state).find((i) => i.id === instanceId);
       if (!inst) return;
       const from = assigneeLabel(inst, state.employees) || 'ריק';
       setState((s) => {
-        const instances = s.instances.map((i) =>
+        const instances = currentInstances(s).map((i) =>
           i.id === instanceId ? { ...i, employeeId: null, tempWorkerName: name, manual: true, exception: false } : i
         );
         const next = withAudit(
-          { ...s, instances },
+          withCurrentInstances(s, instances),
           `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ${name} (מתגבר, לא ברשימת העובדים הקבועים)`
         );
         saveState(next);
@@ -375,54 +385,54 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       });
       toast('המתגבר שובץ למשמרת');
     },
-    [state.instances, state.employees, withAudit, toast]
+    [state, withAudit, toast]
   );
 
   const removeTemp = useCallback(
     (instanceId: string) => {
-      const inst = state.instances.find((i) => i.id === instanceId);
+      const inst = currentInstances(state).find((i) => i.id === instanceId);
       if (!inst) return;
       const name = inst.tempWorkerName;
       setState((s) => {
-        const instances = s.instances.map((i) =>
+        const instances = currentInstances(s).map((i) =>
           i.id === instanceId ? { ...i, tempWorkerName: null, manual: false } : i
         );
-        const next = withAudit({ ...s, instances }, `${DAY_NAMES[inst.day]} ${inst.name}: המתגבר ${name} הוסר מהמשמרת.`);
+        const next = withAudit(withCurrentInstances(s, instances), `${DAY_NAMES[inst.day]} ${inst.name}: המתגבר ${name} הוסר מהמשמרת.`);
         saveState(next);
         return next;
       });
       toast('המתגבר הוסר');
     },
-    [state.instances, withAudit, toast]
+    [state, withAudit, toast]
   );
 
   const markUnavailable = useCallback(
     (instanceId: string, reason: string) => {
-      const inst = state.instances.find((i) => i.id === instanceId);
+      const inst = currentInstances(state).find((i) => i.id === instanceId);
       if (!inst) return;
       const who = empName(inst.employeeId);
       setState((s) => {
-        const instances = s.instances.map((i) =>
+        const instances = currentInstances(s).map((i) =>
           i.id === instanceId ? { ...i, employeeId: null, manual: false, exception: false } : i
         );
         const next = withAudit(
-          { ...s, instances },
+          withCurrentInstances(s, instances),
           `${who} הוסר מהמשמרת ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}–${inst.end}). סיבה: ${reason}.`
         );
         saveState(next);
         return next;
       });
     },
-    [state.instances, empName, withAudit]
+    [state, empName, withAudit]
   );
 
   const applyReplacementOption = useCallback(
     (instanceId: string, optionIndex: number) => {
-      const options = findReplacements(instanceId, state.instances, state.employees, state.weekStartDate, 3);
+      const options = findReplacements(instanceId, currentInstances(state), state.employees, state.weekStartDate, 3);
       const opt = options[optionIndex];
       if (!opt) return;
       setState((s) => {
-        let instances = s.instances;
+        let instances = currentInstances(s);
         let text = '';
         opt.changes.forEach((ch) => {
           const inst = instances.find((i) => i.id === ch.instanceId)!;
@@ -434,13 +444,13 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
             ch.toEmployeeId
           )} · הוחלף באמצעות מנוע חיפוש מחליפים\n`;
         });
-        const next = withAudit({ ...s, instances }, text.trim());
+        const next = withAudit(withCurrentInstances(s, instances), text.trim());
         saveState(next);
         return next;
       });
       toast(`ההחלפה בוצעה (${opt.changeCount} שינוי${opt.changeCount > 1 ? 'ים' : ''})`);
     },
-    [state.instances, state.employees, empName, withAudit, toast]
+    [state, empName, withAudit, toast]
   );
 
   /* ------------------------------------------------------------------ */
@@ -475,9 +485,13 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setState((s) => {
         const e = s.employees.find((x) => x.id === id);
         if (!e) return s;
-        const instances = s.instances.map((i) => (i.employeeId === id ? { ...i, employeeId: null } : i));
+        // an employee is global, so free up their assignments in EVERY week, not just the one being viewed
+        const weeks: AppState['weeks'] = {};
+        for (const [wk, insts] of Object.entries(s.weeks)) {
+          weeks[wk] = insts.map((i) => (i.employeeId === id ? { ...i, employeeId: null } : i));
+        }
         const employees = s.employees.filter((x) => x.id !== id);
-        const next = withAudit({ ...s, employees, instances }, `העובד ${e.name} נמחק מהמערכת.`);
+        const next = withAudit({ ...s, employees, weeks }, `העובד ${e.name} נמחק מהמערכת (מכל השבועות).`);
         saveState(next);
         return next;
       });
@@ -561,13 +575,13 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const setInstanceTime = useCallback(
     (instanceId: string, start: string, end: string) => {
       setState((s) => {
-        const inst = s.instances.find((i) => i.id === instanceId);
+        const inst = currentInstances(s).find((i) => i.id === instanceId);
         if (!inst) return s;
-        const instances = s.instances.map((i) =>
+        const instances = currentInstances(s).map((i) =>
           i.id === instanceId ? { ...i, start, end, durationHours: durationHoursSafe(start, end) } : i
         );
         const next = withAudit(
-          { ...s, instances },
+          withCurrentInstances(s, instances),
           `${DAY_NAMES[inst.day]} ${inst.name}: שעות המשמרת שונו ל-${start}-${end} (עבור תא זה בלבד).`
         );
         saveState(next);
@@ -582,7 +596,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const duplicateInstance = useCallback(
     (instanceId: string) => {
       setState((s) => {
-        const source = s.instances.find((i) => i.id === instanceId);
+        const source = currentInstances(s).find((i) => i.id === instanceId);
         if (!source) return s;
         const clone: ShiftInstance = {
           ...source,
@@ -593,7 +607,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           exception: false,
         };
         const next = withAudit(
-          { ...s, instances: [...s.instances, clone] },
+          withCurrentInstances(s, [...currentInstances(s), clone]),
           `נוסף תא נוסף ל-${DAY_NAMES[source.day]} ${source.name} (${source.start}-${source.end}) - לשיבוץ עובד שני.`
         );
         saveState(next);
@@ -607,11 +621,11 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const deleteInstance = useCallback(
     (instanceId: string) => {
       setState((s) => {
-        const inst = s.instances.find((i) => i.id === instanceId);
+        const inst = currentInstances(s).find((i) => i.id === instanceId);
         if (!inst) return s;
-        const instances = s.instances.filter((i) => i.id !== instanceId);
+        const instances = currentInstances(s).filter((i) => i.id !== instanceId);
         const next = withAudit(
-          { ...s, instances },
+          withCurrentInstances(s, instances),
           `הוסר תא: ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}-${inst.end}).`
         );
         saveState(next);
@@ -627,11 +641,17 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setState((s) => {
         const id = uid();
         const shiftTypes: ShiftType[] = [...s.shiftTypes, { id, name, start, end, category }];
-        const newInstances: ShiftInstance[] = [];
-        for (let d = 0; d < 7; d++) newInstances.push(makeInstance(d, { id, name, start, end, category }));
+        // apply to every week that already has its own data, so it stays consistent everywhere -
+        // weeks not visited yet will get it automatically since they're built fresh from shiftTypes
+        const weeks: AppState['weeks'] = {};
+        for (const [wk, insts] of Object.entries(s.weeks)) {
+          const newInstances: ShiftInstance[] = [];
+          for (let d = 0; d < 7; d++) newInstances.push(makeInstance(d, { id, name, start, end, category }));
+          weeks[wk] = [...insts, ...newInstances];
+        }
         const next = withAudit(
-          { ...s, shiftTypes, instances: [...s.instances, ...newInstances] },
-          `נוסף סוג משמרת חדש "${name}" (${start}-${end}) לכל ימי השבוע.`
+          { ...s, shiftTypes, weeks },
+          `נוסף סוג משמרת חדש "${name}" (${start}-${end}) לכל ימי השבוע, בכל השבועות הקיימים.`
         );
         saveState(next);
         return next;
@@ -645,12 +665,15 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     (id: string, name: string, start: string, end: string, category: Category) => {
       setState((s) => {
         const shiftTypes = s.shiftTypes.map((st) => (st.id === id ? { ...st, name, start, end, category } : st));
-        const instances = s.instances.map((i) =>
-          i.shiftTypeId === id
-            ? { ...i, name, start, end, category, durationHours: durationHoursSafe(start, end) }
-            : i
-        );
-        const next = withAudit({ ...s, shiftTypes, instances }, `עודכן סוג המשמרת "${name}" (${start}-${end}).`);
+        const weeks: AppState['weeks'] = {};
+        for (const [wk, insts] of Object.entries(s.weeks)) {
+          weeks[wk] = insts.map((i) =>
+            i.shiftTypeId === id
+              ? { ...i, name, start, end, category, durationHours: durationHoursSafe(start, end) }
+              : i
+          );
+        }
+        const next = withAudit({ ...s, shiftTypes, weeks }, `עודכן סוג המשמרת "${name}" (${start}-${end}) בכל השבועות.`);
         saveState(next);
         return next;
       });
@@ -665,8 +688,11 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         const st = s.shiftTypes.find((x) => x.id === id);
         if (!st) return s;
         const shiftTypes = s.shiftTypes.filter((x) => x.id !== id);
-        const instances = s.instances.filter((i) => i.shiftTypeId !== id);
-        const next = withAudit({ ...s, shiftTypes, instances }, `סוג המשמרת "${st.name}" נמחק.`);
+        const weeks: AppState['weeks'] = {};
+        for (const [wk, insts] of Object.entries(s.weeks)) {
+          weeks[wk] = insts.filter((i) => i.shiftTypeId !== id);
+        }
+        const next = withAudit({ ...s, shiftTypes, weeks }, `סוג המשמרת "${st.name}" נמחק (מכל השבועות).`);
         saveState(next);
         return next;
       });
@@ -680,8 +706,8 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setState((s) => {
         const inst = makeInstance(day, { id: 'adhoc-' + uid(), name, start, end, category });
         const next = withAudit(
-          { ...s, instances: [...s.instances, inst] },
-          `נוספה משמרת ייעודית: ${DAY_NAMES[day]} ${name} (${start}-${end}).`
+          withCurrentInstances(s, [...currentInstances(s), inst]),
+          `נוספה משמרת ייעודית: ${DAY_NAMES[day]} ${name} (${start}-${end}) לשבוע ${s.weekStartDate}.`
         );
         saveState(next);
         return next;
@@ -704,6 +730,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       state,
+      instances: currentInstances(state),
       tab,
       setTab,
       modal,

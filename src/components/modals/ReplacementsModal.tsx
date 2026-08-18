@@ -5,21 +5,21 @@ import { findReplacements, getEligibility } from '../../engine';
 import { DAY_NAMES, REASON_LABELS } from '../../types';
 
 export default function ReplacementsModal({ instanceId }: { instanceId: string }) {
-  const { state, applyReplacementOption, assignTemp, closeModal } = useScheduler();
-  const inst = state.instances.find((i) => i.id === instanceId);
+  const { state, instances, applyReplacementOption, assignTemp, closeModal } = useScheduler();
+  const inst = instances.find((i) => i.id === instanceId);
   const [tempName, setTempName] = useState('');
 
   const options = useMemo(
-    () => (inst ? findReplacements(instanceId, state.instances, state.employees, state.weekStartDate, 3) : []),
-    [inst, instanceId, state.instances, state.employees]
+    () => (inst ? findReplacements(instanceId, instances, state.employees, state.weekStartDate, 3) : []),
+    [inst, instanceId, instances, state.employees]
   );
 
   const ineligible = useMemo(() => {
     if (!inst) return [];
     return state.employees
-      .map((e) => ({ e, elig: getEligibility(e, inst, state.instances, state.weekStartDate, instanceId) }))
+      .map((e) => ({ e, elig: getEligibility(e, inst, instances, state.weekStartDate, instanceId) }))
       .filter((x) => !x.elig.eligible);
-  }, [inst, instanceId, state.employees, state.instances]);
+  }, [inst, instanceId, state.employees, instances]);
 
   if (!inst) return null;
 
@@ -48,7 +48,7 @@ export default function ReplacementsModal({ instanceId }: { instanceId: string }
               </div>
               <ul>
                 {o.changes.map((c, ci) => {
-                  const ciInst = state.instances.find((x) => x.id === c.instanceId)!;
+                  const ciInst = instances.find((x) => x.id === c.instanceId)!;
                   return (
                     <li key={ci}>
                       {DAY_NAMES[ciInst.day]} {ciInst.name} ({ciInst.start}–{ciInst.end}): ← {nameOf(c.toEmployeeId)}

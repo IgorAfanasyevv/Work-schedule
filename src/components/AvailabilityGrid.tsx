@@ -1,7 +1,7 @@
 import React from 'react';
 import { useScheduler } from '../SchedulerContext';
 import { CATEGORY_LABEL, DAY_NAMES } from '../types';
-import type { AppState, Employee } from '../types';
+import type { Employee, ShiftInstance } from '../types';
 import { dateForDayIndex, formatDDMM } from '../dateUtils';
 
 type CellView =
@@ -10,7 +10,7 @@ type CellView =
   | { kind: 'assigned'; label: string }
   | { kind: 'blank' };
 
-function cellView(e: Employee, day: number, week: string, instances: AppState['instances']): CellView {
+function cellView(e: Employee, day: number, week: string, instances: ShiftInstance[]): CellView {
   // only blocks tagged for THIS week (or untagged/standing ones from the "עובדים" tab) count here —
   // a block saved while looking at a different week stays inert and invisible on this one
   const thisWeekBlocks = e.blocks.filter((b) => !b.weekStartDate || b.weekStartDate === week);
@@ -30,8 +30,8 @@ function cellView(e: Employee, day: number, week: string, instances: AppState['i
 }
 
 export default function AvailabilityGrid() {
-  const { state, openModal, clearWeekPreferences } = useScheduler();
-  const { employees, instances, weekStartDate } = state;
+  const { state, instances, openModal, clearWeekPreferences } = useScheduler();
+  const { employees, weekStartDate } = state;
 
   return (
     <div className="card" style={{ marginTop: 18 }}>

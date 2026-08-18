@@ -15,8 +15,8 @@ function blockLabel(b: EmployeeBlock, shiftTypes: { id: string; name: string }[]
 }
 
 export default function Employees() {
-  const { state, openModal, deleteEmployee, removeBlock } = useScheduler();
-  const { employees, instances, shiftTypes } = state;
+  const { state, instances, openModal, deleteEmployee, removeBlock } = useScheduler();
+  const { employees, shiftTypes } = state;
 
   return (
     <>

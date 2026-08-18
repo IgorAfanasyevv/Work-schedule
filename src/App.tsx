@@ -17,7 +17,7 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
 ];
 
 function Shell() {
-  const { tab, setTab, state, isLoaded, isShared } = useScheduler();
+  const { tab, setTab, state, instances, isLoaded, isShared } = useScheduler();
 
   if (!isLoaded) {
     return (
@@ -25,7 +25,7 @@ function Shell() {
     );
   }
 
-  const unfilledCount = state.instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+  const unfilledCount = instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
 
   return (
     <div id="app">
