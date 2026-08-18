@@ -146,7 +146,10 @@ export default function ScheduleView() {
 function GapBanner() {
   const { instances, openModal } = useScheduler();
   const gaps = instances.filter((i) => !i.employeeId && !i.tempWorkerName).sort((a, b) => a.day - b.day);
-  if (gaps.length === 0) return null;
+  const filledCount = instances.length - gaps.length;
+  // don't nag about a week nobody has touched yet - only show once a schedule was actually
+  // attempted (at least one slot got filled) and some gaps are still left over
+  if (gaps.length === 0 || filledCount === 0) return null;
 
   return (
     <div

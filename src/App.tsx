@@ -26,6 +26,9 @@ function Shell() {
   }
 
   const unfilledCount = instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+  const filledCount = instances.length - unfilledCount;
+  // same rule as the in-page banner: don't flag a week nobody has touched yet
+  const showGapBadge = unfilledCount > 0 && filledCount > 0;
 
   return (
     <div id="app">
@@ -44,7 +47,7 @@ function Shell() {
           >
             <span className="dot" />
             {item.label}
-            {unfilledCount > 0 && (item.id === 'dashboard' || item.id === 'schedule') && (
+            {showGapBadge && (item.id === 'dashboard' || item.id === 'schedule') && (
               <span
                 title={`${unfilledCount} משמרות לא מאוישות`}
                 style={{
