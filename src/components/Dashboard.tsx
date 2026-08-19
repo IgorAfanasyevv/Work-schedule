@@ -28,8 +28,8 @@ export default function Dashboard() {
       <div className="topbar">
         <h2>לוח בקרה</h2>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn" onClick={localRecalc} disabled={isGenerating}>
-            {isGenerating ? '⏳ מחשב...' : '🔄 חשב מחדש'}
+          <button className="btn" onClick={localRecalc} disabled={isGenerating} title="בודק את השיבוצים הקיימים בלבד ומסיר הפרות חוקים - לא ממלא תאים ריקים">
+            {isGenerating ? '⏳ מחשב...' : '🔍 בדוק תקינות'}
           </button>
           <button className="btn primary" onClick={fullGenerate} disabled={isGenerating}>
             {isGenerating ? '⏳ יוצר סידור...' : '✨ צור סידור מלא'}

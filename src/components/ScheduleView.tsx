@@ -145,8 +145,8 @@ function HeaderActions() {
   const { localRecalc, fullGenerate, isGenerating } = useScheduler();
   return (
     <>
-      <button className="btn" onClick={localRecalc} disabled={isGenerating}>
-        {isGenerating ? '⏳ מחשב...' : '🔄 חשב מחדש'}
+      <button className="btn" onClick={localRecalc} disabled={isGenerating} title="בודק את השיבוצים הקיימים בלבד ומסיר הפרות חוקים - לא ממלא תאים ריקים">
+        {isGenerating ? '⏳ מחשב...' : '🔍 בדוק תקינות'}
       </button>
       <button className="btn primary" onClick={fullGenerate} disabled={isGenerating}>
         {isGenerating ? '⏳ יוצר סידור...' : '✨ צור סידור מלא'}

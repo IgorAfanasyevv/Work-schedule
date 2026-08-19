@@ -10,15 +10,13 @@ import type {
 import { REASON_LABELS, DAY_NAMES } from './types';
 import {
   assigneeLabel,
-  fairnessScore,
   findReplacements,
   generateFullSchedule,
   getEligibility,
   makeInstance,
-  pickAmongBest,
   uid,
 } from './engine';
-import { defaultState, loadState, saveState, subscribeRemoteState } from './state';
+import { defaultState, loadState, saveState, subscribeRemoteState, flushPendingSaves } from './state';
 import { isFirebaseConfigured } from './firebaseClient';
 import { addDaysISO, mostRecentSundayISO } from './dateUtils';
 import { currentInstances, withCurrentInstances, ensureWeekSeeded } from './weekStore';
@@ -176,6 +174,24 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [currentSiteId]);
 
+  // force through any save that's still waiting on its debounce timer right before the page
+  // unloads/backgrounds, so closing the tab or an untimely refresh can't silently drop the last
+  // few edits that hadn't been persisted yet
+  useEffect(() => {
+    const flush = () => flushPendingSaves();
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   const toast = useCallback((msg: string) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg }]);
@@ -243,47 +259,46 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => {
       setState((s) => {
         let changed = 0;
-        let instances = currentInstances(s).map((inst) => ({ ...inst }));
+        const instances = currentInstances(s).map((inst) => ({ ...inst }));
 
-        // 1) unassign anyone who is now in hard-constraint violation (unless explicitly flagged as an approved exception)
-        instances = instances.map((inst) => {
+        // Only re-validate EXISTING assignments and unassign anyone now in violation - this button
+        // is meant for "double-check what I already built by hand", not "auto-complete the rest of
+        // the week for me". It deliberately does NOT touch empty slots at all: use "✨ צור סידור מלא"
+        // for a full automatic build, or "מצא מחליף" on a specific empty cell if you want help with
+        // just that one.
+        //
+        // This is a sequential in-place pass (not .map()) on purpose: if two of an employee's
+        // shifts conflict with EACH OTHER (e.g. both start the same day), checking eligibility
+        // against a snapshot taken before either was cleared would see both as invalid and drop
+        // BOTH - going from a genuine conflict straight to an empty day instead of keeping one of
+        // them. Clearing one at a time lets the next check see that the conflict is already gone.
+        for (let i = 0; i < instances.length; i++) {
+          const inst = instances[i];
           if (inst.employeeId && !inst.exception) {
             const e = s.employees.find((x) => x.id === inst.employeeId);
             if (!e) {
+              instances[i] = { ...inst, employeeId: null };
               changed++;
-              return { ...inst, employeeId: null };
+              continue;
             }
             const elig = getEligibility(e, inst, instances, s.weekStartDate, inst.id);
             if (!elig.eligible) {
+              instances[i] = { ...inst, employeeId: null };
               changed++;
-              return { ...inst, employeeId: null };
             }
           }
-          return inst;
-        });
-
-        // 2) try to auto-fill empties (never touches מתגבר slots), respecting each employee's requested count
-        instances = instances.map((inst) => {
-          if (inst.employeeId || inst.tempWorkerName) return inst;
-          const cands = s.employees.filter((e) => getEligibility(e, inst, instances, s.weekStartDate, null, 'desiredShifts').eligible);
-          if (cands.length) {
-            const scored = cands.map((e) => ({ item: e, score: fairnessScore(e, inst, instances, s.employees) }));
-            changed++;
-            return { ...inst, employeeId: pickAmongBest(scored).id };
-          }
-          return inst;
-        });
+        }
 
         const unfilled = instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
         const next = withAudit(
           withCurrentInstances(s, instances),
-          `בוצע חישוב מקומי: ${changed} שיבוצים עודכנו. ${unfilled > 0 ? `${unfilled} משמרות נשארו לא מאוישות.` : 'כל המשמרות מאוישות.'}`
+          `בוצע בדיקה מקומית: ${changed} שיבוצים לא תקינים הוסרו. ${unfilled > 0 ? `${unfilled} משמרות נשארות לא מאוישות (לא מולאו אוטומטית).` : 'כל המשמרות מאוישות.'}`
         );
         saveState(next, siteIdRef.current);
         toast(
-          unfilled > 0
-            ? `חישוב מקומי בוצע — ${changed} שינויים, אך ${unfilled} משמרות עדיין לא מאוישות ⚠️`
-            : `חישוב מקומי בוצע — ${changed > 0 ? changed + ' שינויים' : 'אין שינויים נדרשים'}, כל המשמרות מאוישות ✓`
+          changed > 0
+            ? `נמצאו ${changed} שיבוצים שלא תקינים ונוקו — שאר הסידור נשאר בדיוק כפי שבניתם`
+            : 'הכל תקין — לא נמצאו הפרות חוקים בשיבוצים הקיימים'
         );
         return next;
       });

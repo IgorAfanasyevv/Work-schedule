@@ -70,16 +70,28 @@ export function loadLocalState(siteId: string): AppState {
   return defaultState();
 }
 
+const pendingLocal: Record<string, AppState> = {};
 const localSaveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+function flushLocalSite(siteId: string) {
+  const pending = pendingLocal[siteId];
+  if (pending === undefined) return;
+  try {
+    localStorage.setItem(STORAGE_KEY_PREFIX + siteId, JSON.stringify(pending));
+  } catch (e) {
+    console.error('local save failed', e);
+  }
+  delete pendingLocal[siteId];
+  if (localSaveTimers[siteId]) {
+    clearTimeout(localSaveTimers[siteId]);
+    delete localSaveTimers[siteId];
+  }
+}
+
 export function saveLocalState(state: AppState, siteId: string) {
+  pendingLocal[siteId] = state;
   if (localSaveTimers[siteId]) clearTimeout(localSaveTimers[siteId]);
-  localSaveTimers[siteId] = setTimeout(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + siteId, JSON.stringify(state));
-    } catch (e) {
-      console.error('local save failed', e);
-    }
-  }, 250);
+  localSaveTimers[siteId] = setTimeout(() => flushLocalSite(siteId), 250);
 }
 
 /* ------------------------------------------------------------------ */
@@ -108,15 +120,27 @@ export async function loadRemoteState(siteId: string): Promise<AppState> {
   }
 }
 
+const pendingRemote: Record<string, AppState> = {};
 const remoteSaveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+function flushRemoteSite(siteId: string) {
+  const pending = pendingRemote[siteId];
+  if (pending === undefined || !db) return;
+  setDoc(stateDocRef(siteId), { data: pending, updatedAt: serverTimestamp() }, { merge: true }).catch((e) =>
+    console.error('remote save failed', e)
+  );
+  delete pendingRemote[siteId];
+  if (remoteSaveTimers[siteId]) {
+    clearTimeout(remoteSaveTimers[siteId]);
+    delete remoteSaveTimers[siteId];
+  }
+}
+
 export function saveRemoteState(state: AppState, siteId: string) {
   if (!db) return;
+  pendingRemote[siteId] = state;
   if (remoteSaveTimers[siteId]) clearTimeout(remoteSaveTimers[siteId]);
-  remoteSaveTimers[siteId] = setTimeout(() => {
-    setDoc(stateDocRef(siteId), { data: state, updatedAt: serverTimestamp() }, { merge: true }).catch((e) =>
-      console.error('remote save failed', e)
-    );
-  }, 400);
+  remoteSaveTimers[siteId] = setTimeout(() => flushRemoteSite(siteId), 400);
 }
 
 /** subscribe to live changes for one site (from any tab/user); returns an unsubscribe function */
@@ -142,4 +166,14 @@ export async function loadState(siteId: string): Promise<AppState> {
 export function saveState(state: AppState, siteId: string) {
   if (isFirebaseConfigured) saveRemoteState(state, siteId);
   else saveLocalState(state, siteId);
+}
+
+/**
+ * Immediately writes out any save that's still waiting on its debounce timer, for every site.
+ * Called right before the page unloads/hides so a refresh or tab close can't silently drop the
+ * last few seconds of edits that hadn't been persisted yet.
+ */
+export function flushPendingSaves() {
+  Object.keys(pendingLocal).forEach(flushLocalSite);
+  Object.keys(pendingRemote).forEach(flushRemoteSite);
 }
