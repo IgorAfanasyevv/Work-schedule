@@ -171,7 +171,7 @@ function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boo
   return (
     <div
       className={`shift-cell ${statusClass(status)}`}
-      style={{ marginBottom: 4 }}
+      style={{ marginBottom: 3 }}
       onClick={() => {
         setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
         openModal({ type: 'shiftDetail', instanceId: inst.id });
@@ -207,13 +207,13 @@ function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boo
           title="הסר תא זה"
           style={{
             position: 'absolute',
-            bottom: 6,
-            left: 6,
+            bottom: 3,
+            left: 3,
             background: 'none',
             border: 'none',
             color: 'var(--text-faint)',
-            fontSize: 12,
-            padding: 2,
+            fontSize: 10,
+            padding: 1,
             cursor: 'pointer',
           }}
         >
@@ -242,10 +242,10 @@ function DaySlotCell({ day, stId, instances }: { day: number; stId: string; inst
           width: '100%',
           background: 'none',
           border: '1px dashed var(--border-soft)',
-          borderRadius: 8,
+          borderRadius: 6,
           color: 'var(--text-faint)',
-          fontSize: 11,
-          padding: '4px 0',
+          fontSize: 9.5,
+          padding: '2px 0',
           cursor: matches.length === 0 ? 'default' : 'pointer',
           opacity: matches.length === 0 ? 0.4 : 1,
         }}
