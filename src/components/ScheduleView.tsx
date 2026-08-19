@@ -192,8 +192,8 @@ function HeaderActions() {
   );
 }
 
-function statusClass(status: ReturnType<typeof instanceStatus>, isWeekend: boolean): string {
-  if (status === 'empty') return isWeekend ? 'st-empty' : 'st-empty-plain';
+function statusClass(status: ReturnType<typeof instanceStatus>): string {
+  if (status === 'empty') return 'st-empty';
   if (status === 'manual') return 'st-manual';
   if (status === 'warn') return 'st-warn';
   if (status === 'temp') return 'st-temp';
@@ -204,11 +204,10 @@ function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boo
   const { state, instances, openModal, setAssignMode, deleteInstance } = useScheduler();
   const status = instanceStatus(inst);
   const label = assigneeLabel(inst, state.employees);
-  const isWeekend = inst.day === 5 || inst.day === 6;
 
   return (
     <div
-      className={`shift-cell ${statusClass(status, isWeekend)}`}
+      className={`shift-cell ${statusClass(status)}`}
       style={{ marginBottom: 4 }}
       onClick={() => {
         setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
@@ -227,10 +226,8 @@ function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boo
             </span>
           )}
         </div>
-      ) : isWeekend ? (
-        <div className="empty-msg">⛔ לא מאוישת</div>
       ) : (
-        <div className="empty-msg-plain">לא מאוישת</div>
+        <div className="empty-msg">⛔ לא מאוישת</div>
       )}
       {inst.exception && (
         <div className="cell-icons">
@@ -269,7 +266,7 @@ function DaySlotCell({ day, stId, instances }: { day: number; stId: string; inst
   const matches = instances.filter((i) => i.day === day && i.shiftTypeId === stId);
 
   return (
-    <div style={{ position: 'relative', minHeight: 58 }}>
+    <div style={{ position: 'relative' }}>
       {matches.map((inst) => (
         <ShiftCell inst={inst} key={inst.id} showDelete={matches.length > 1} />
       ))}
@@ -378,9 +375,7 @@ function CalendarView() {
                 const status = instanceStatus(inst);
                 const color =
                   status === 'empty'
-                    ? isWeekend
-                      ? 'var(--red-dim)'
-                      : 'var(--panel-2)'
+                    ? 'var(--red-dim)'
                     : status === 'manual'
                     ? 'var(--blue-dim)'
                     : status === 'warn'
@@ -390,9 +385,7 @@ function CalendarView() {
                     : 'var(--green-dim)';
                 const fg =
                   status === 'empty'
-                    ? isWeekend
-                      ? 'var(--red)'
-                      : 'var(--text-faint)'
+                    ? 'var(--red)'
                     : status === 'manual'
                     ? 'var(--blue)'
                     : status === 'warn'
