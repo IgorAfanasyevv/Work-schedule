@@ -451,14 +451,34 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     (instanceId: string, reason: string) => {
       const inst = currentInstances(state).find((i) => i.id === instanceId);
       if (!inst) return;
-      const who = empName(inst.employeeId);
+      const employeeId = inst.employeeId;
+      const who = empName(employeeId);
       setState((s) => {
         const instances = currentInstances(s).map((i) =>
           i.id === instanceId ? { ...i, employeeId: null, manual: false, exception: false } : i
         );
+        // also mark the employee's whole day with this reason (e.g. "רענון"), not just remove them
+        // from this one shift — reasons like מילואים/מחלה/רענון mean they can't work ANY shift that
+        // day, and this is what makes the availability grid show the real reason instead of a
+        // generic "חופש" (or nothing at all) when marked this way instead of via the grid directly
+        let employees = s.employees;
+        if (employeeId) {
+          const week = s.weekStartDate;
+          const e = s.employees.find((x) => x.id === employeeId);
+          if (e) {
+            const kept = e.blocks.filter((b) => {
+              if (b.weekStartDate !== week) return true;
+              if (b.scope === 'day' && b.day === inst.day) return false;
+              if (b.scope === 'category' && b.day === inst.day) return false;
+              return true;
+            });
+            const dayOffBlock: EmployeeBlock = { scope: 'day', day: inst.day, reason, weekStartDate: week };
+            employees = s.employees.map((x) => (x.id === employeeId ? { ...x, blocks: [...kept, dayOffBlock] } : x));
+          }
+        }
         const next = withAudit(
-          withCurrentInstances(s, instances),
-          `${who} הוסר מהמשמרת ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}–${inst.end}). סיבה: ${reason}.`
+          withCurrentInstances({ ...s, employees }, instances),
+          `${who} הוסר מהמשמרת ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}–${inst.end}). סיבה: ${reason}. העובד סומן כ${reason} לכל היום.`
         );
         saveState(next, siteIdRef.current);
         return next;
