@@ -88,6 +88,7 @@ interface Ctx {
   updateEmployee: (id: string, name: string, desired: number, max: number) => void;
   setLastRefresherDate: (employeeId: string, dateISO: string) => void;
   deleteEmployee: (id: string) => void;
+  moveEmployeeToSite: (employeeId: string, targetSiteId: string) => Promise<void>;
   addBlock: (employeeId: string, block: EmployeeBlock) => void;
   removeBlock: (employeeId: string, idx: number) => void;
   setDayConstraints: (employeeId: string, day: number, dayOff: boolean, blockedCategories: Category[], reason?: string) => void;
@@ -576,6 +577,45 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     [withAudit, toast]
   );
 
+  /**
+   * Moves an employee to a different SITE (a fully separate dataset - see sites.ts). Removes
+   * them from every week's schedule at the current site, then loads the target site's own stored
+   * data, adds the employee there, and saves it back - without switching which site you're
+   * currently viewing. Preferences/blocks don't carry over since they're tied to specific weeks
+   * that belong to the site being left.
+   */
+  const moveEmployeeToSite = useCallback(
+    async (employeeId: string, targetSiteId: string) => {
+      if (targetSiteId === siteIdRef.current) return;
+      const e = state.employees.find((x) => x.id === employeeId);
+      if (!e) return;
+      const fromSiteId = siteIdRef.current;
+
+      setState((s) => {
+        const weeks: AppState['weeks'] = {};
+        for (const [wk, insts] of Object.entries(s.weeks)) {
+          weeks[wk] = insts.map((i) => (i.employeeId === employeeId ? { ...i, employeeId: null } : i));
+        }
+        const employees = s.employees.filter((x) => x.id !== employeeId);
+        const next = withAudit({ ...s, employees, weeks }, `${e.name} הועבר לאתר אחר והוסר מכל השבועות באתר זה.`);
+        saveState(next, fromSiteId);
+        return next;
+      });
+
+      try {
+        const targetState = await loadState(targetSiteId);
+        const movedEmployee: Employee = { ...e, blocks: [] };
+        const merged: AppState = { ...targetState, employees: [...targetState.employees, movedEmployee] };
+        saveState(merged, targetSiteId);
+        toast(`${e.name} הועבר בהצלחה לאתר החדש`);
+      } catch (err) {
+        console.error('move employee to site failed', err);
+        toast('שגיאה בהעברת העובד לאתר החדש');
+      }
+    },
+    [state.employees, withAudit, toast]
+  );
+
   const addBlock = useCallback(
     (employeeId: string, block: EmployeeBlock) => {
       setState((s) => {
@@ -847,6 +887,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       updateEmployee,
       setLastRefresherDate,
       deleteEmployee,
+      moveEmployeeToSite,
       addBlock,
       removeBlock,
       setDayConstraints,
@@ -891,6 +932,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       updateEmployee,
       setLastRefresherDate,
       deleteEmployee,
+      moveEmployeeToSite,
       addBlock,
       removeBlock,
       setDayConstraints,
