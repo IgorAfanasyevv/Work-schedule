@@ -22,6 +22,7 @@ import { defaultState, loadState, saveState, subscribeRemoteState } from './stat
 import { isFirebaseConfigured } from './firebaseClient';
 import { addDaysISO, mostRecentSundayISO } from './dateUtils';
 import { currentInstances, withCurrentInstances, ensureWeekSeeded } from './weekStore';
+import { SITES, DEFAULT_SITE_ID, CURRENT_SITE_STORAGE_KEY } from './sites';
 
 export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes' | 'refreshers';
 
@@ -45,6 +46,9 @@ interface Ctx {
   state: AppState;
   /** the current week's shift schedule only — derived from state.weeks[state.weekStartDate] */
   instances: ShiftInstance[];
+  sites: { id: string; name: string }[];
+  currentSiteId: string;
+  switchSite: (siteId: string) => void;
   tab: Tab;
   setTab: (t: Tab) => void;
   modal: ModalState;
@@ -114,10 +118,42 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // initial load (from Supabase if configured, otherwise from this browser's localStorage)
+  const [currentSiteId, setCurrentSiteId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(CURRENT_SITE_STORAGE_KEY) || DEFAULT_SITE_ID;
+    } catch {
+      return DEFAULT_SITE_ID;
+    }
+  });
+  // kept in sync with currentSiteId so every saveState(...) call below can read the *current*
+  // site without needing currentSiteId in every single callback's dependency array
+  const siteIdRef = React.useRef(currentSiteId);
+  siteIdRef.current = currentSiteId;
+
+  const switchSite = useCallback((siteId: string) => {
+    if (siteId === siteIdRef.current) return;
+    try {
+      localStorage.setItem(CURRENT_SITE_STORAGE_KEY, siteId);
+    } catch {
+      /* ignore */
+    }
+    siteIdRef.current = siteId;
+    setCurrentSiteId(siteId);
+    setIsLoaded(false);
+    // an employee/instance id from the site we're leaving can't mean anything in the new one
+    setModal(null);
+    setSelectedEmployeeId(null);
+    loadState(siteId).then((s) => {
+      setState(ensureWeekSeeded(s, s.weekStartDate));
+      setIsLoaded(true);
+    });
+  }, []);
+
+  // initial load (from Firestore if configured, otherwise from this browser's localStorage) —
+  // reruns whenever the active site changes
   useEffect(() => {
     let cancelled = false;
-    loadState().then((s) => {
+    loadState(currentSiteId).then((s) => {
       if (!cancelled) {
         setState(ensureWeekSeeded(s, s.weekStartDate));
         setIsLoaded(true);
@@ -126,14 +162,18 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSiteId]);
 
-  // live updates from other tabs/users when Supabase is configured
+  // live updates from other tabs/users when Firebase is configured — resubscribes to the right
+  // site's document whenever the active site changes
   useEffect(() => {
     if (!isFirebaseConfigured) return;
-    const unsubscribe = subscribeRemoteState((incoming) => setState((prev) => ensureWeekSeeded(incoming, prev.weekStartDate)));
+    const unsubscribe = subscribeRemoteState(currentSiteId, (incoming) =>
+      setState((prev) => ensureWeekSeeded(incoming, prev.weekStartDate))
+    );
     return unsubscribe;
-  }, []);
+  }, [currentSiteId]);
 
   const toast = useCallback((msg: string) => {
     const id = Date.now() + Math.random();
@@ -170,7 +210,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     (label: string) => {
       setState((s) => {
         const next = { ...s, weekLabel: label };
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
     },
@@ -189,7 +229,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
             ? `נוצר סידור מלא עבור ${s.weekLabel} — אך ${unfilled} משמרות נשארו לא מאוישות (אין עובד זמין/מתאים).`
             : `נוצר סידור מלא אוטומטית עבור ${s.weekLabel}. כל המשמרות מאוישות.`;
         const next = withAudit(withCurrentInstances(s, generated), text);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         toast(unfilled > 0 ? `הסידור נוצר — ${unfilled} משמרות נשארו ללא איוש ⚠️` : 'הסידור המלא נוצר בהצלחה — כל המשמרות מאוישות ✓');
         return next;
       });
@@ -238,7 +278,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, instances),
           `בוצע חישוב מקומי: ${changed} שיבוצים עודכנו. ${unfilled > 0 ? `${unfilled} משמרות נשארו לא מאוישות.` : 'כל המשמרות מאוישות.'}`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         toast(
           unfilled > 0
             ? `חישוב מקומי בוצע — ${changed} שינויים, אך ${unfilled} משמרות עדיין לא מאוישות ⚠️`
@@ -254,7 +294,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     setState((s) => {
       const newWeek = addDaysISO(s.weekStartDate, direction * 7);
       const next = ensureWeekSeeded({ ...s, weekStartDate: newWeek }, newWeek);
-      saveState(next);
+      saveState(next, siteIdRef.current);
       return next;
     });
   }, []);
@@ -263,7 +303,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     setState((s) => {
       const newWeek = mostRecentSundayISO();
       const next = ensureWeekSeeded({ ...s, weekStartDate: newWeek }, newWeek);
-      saveState(next);
+      saveState(next, siteIdRef.current);
       return next;
     });
   }, []);
@@ -275,7 +315,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       const [y, m, d] = dateISO.split('-').map(Number);
       const newWeek = mostRecentSundayISO(new Date(y, m - 1, d));
       const next = ensureWeekSeeded({ ...s, weekStartDate: newWeek }, newWeek);
-      saveState(next);
+      saveState(next, siteIdRef.current);
       return next;
     });
   }, []);
@@ -293,7 +333,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         withCurrentInstances(s, instances),
         `כל השיבוצים בסידור של השבוע ${s.weekStartDate} נוקו. העדפות העובדים ושבועות אחרים נשארו ללא שינוי.`
       );
-      saveState(next);
+      saveState(next, siteIdRef.current);
       return next;
     });
     toast('הסידור של השבוע הנוכחי נוקה — כל המשמרות ריקות כעת (העדפות ושבועות אחרים לא נגעו)');
@@ -311,7 +351,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         blocks: e.blocks.filter((b) => b.weekStartDate !== week),
       }));
       const next = withAudit({ ...s, employees }, `כל ההעדפות של השבוע (${week}) נוקו עבור כל העובדים.`);
-      saveState(next);
+      saveState(next, siteIdRef.current);
       return next;
     });
     toast('ההעדפות של השבוע הנוכחי נוקו');
@@ -342,7 +382,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
                 .join('; ')})`
             : `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ${empName(employeeId)} (שינוי ידני)`;
           const next = withAudit(withCurrentInstances(s, instances), text);
-          saveState(next);
+          saveState(next, siteIdRef.current);
           return next;
         });
         toast(isException ? 'השיבוץ נשמר כחריגה ידנית' : 'השיבוץ נשמר');
@@ -359,7 +399,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, instances),
           `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ריק (שינוי ידני)`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('השיבוץ נשמר');
@@ -381,7 +421,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, instances),
           `${DAY_NAMES[inst.day]} ${inst.name}: ${from} ← ${name} (מתגבר, לא ברשימת העובדים הקבועים)`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('המתגבר שובץ למשמרת');
@@ -399,7 +439,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           i.id === instanceId ? { ...i, tempWorkerName: null, manual: false } : i
         );
         const next = withAudit(withCurrentInstances(s, instances), `${DAY_NAMES[inst.day]} ${inst.name}: המתגבר ${name} הוסר מהמשמרת.`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('המתגבר הוסר');
@@ -420,7 +460,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, instances),
           `${who} הוסר מהמשמרת ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}–${inst.end}). סיבה: ${reason}.`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
     },
@@ -446,7 +486,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           )} · הוחלף באמצעות מנוע חיפוש מחליפים\n`;
         });
         const next = withAudit(withCurrentInstances(s, instances), text.trim());
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast(`ההחלפה בוצעה (${opt.changeCount} שינוי${opt.changeCount > 1 ? 'ים' : ''})`);
@@ -460,7 +500,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setState((s) => {
         const employee: Employee = { id: uid(), name, desiredShifts: desired, maxShifts: max, blocks: [] };
         const next = withAudit({ ...s, employees: [...s.employees, employee] }, `נוסף עובד חדש: ${name}.`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('נשמר');
@@ -473,7 +513,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setState((s) => {
         const employees = s.employees.map((e) => (e.id === id ? { ...e, name, desiredShifts: desired, maxShifts: max } : e));
         const next = withAudit({ ...s, employees }, `עודכנו פרטי העובד ${name}.`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('נשמר');
@@ -488,7 +528,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         if (!e) return s;
         const employees = s.employees.map((x) => (x.id === employeeId ? { ...x, lastRefresherDate: dateISO } : x));
         const next = withAudit({ ...s, employees }, `${e.name}: תאריך ריענון אחרון עודכן ל-${dateISO}.`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('התאריך נשמר');
@@ -508,7 +548,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         }
         const employees = s.employees.filter((x) => x.id !== id);
         const next = withAudit({ ...s, employees, weeks }, `העובד ${e.name} נמחק מהמערכת (מכל השבועות).`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('העובד נמחק');
@@ -523,7 +563,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         if (!e) return s;
         const employees = s.employees.map((x) => (x.id === employeeId ? { ...x, blocks: [...x.blocks, block] } : x));
         const next = withAudit({ ...s, employees }, `נוספה חסימה עבור ${e.name}.`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('החסימה נוספה');
@@ -540,7 +580,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           x.id === employeeId ? { ...x, blocks: x.blocks.filter((_, i) => i !== idx) } : x
         );
         const next = withAudit({ ...s, employees }, `הוסרה חסימה עבור ${e.name}.`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
     },
@@ -581,7 +621,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           ? `${e.name}: עודכנו קטגוריות משמרת חסומות ב${DAY_NAMES[day]} (${blockedCategories.length}, שבוע ${week}).`
           : `${e.name}: הוסרו כל החסימות ל${DAY_NAMES[day]} לשבוע ${week} (זמין לכל המשמרות באותו שבוע).`;
         const next = withAudit({ ...s, employees }, text);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
     },
@@ -601,7 +641,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, instances),
           `${DAY_NAMES[inst.day]} ${inst.name}: שעות המשמרת שונו ל-${start}-${end} (עבור תא זה בלבד).`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('השעות עודכנו');
@@ -627,7 +667,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, [...currentInstances(s), clone]),
           `נוסף תא נוסף ל-${DAY_NAMES[source.day]} ${source.name} (${source.start}-${source.end}) - לשיבוץ עובד שני.`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('נוסף מקום שני לאותה משמרת');
@@ -645,7 +685,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, instances),
           `הוסר תא: ${DAY_NAMES[inst.day]} ${inst.name} (${inst.start}-${inst.end}).`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
     },
@@ -670,7 +710,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           { ...s, shiftTypes, weeks },
           `נוסף סוג משמרת חדש "${name}" (${start}-${end}) לכל ימי השבוע, בכל השבועות הקיימים.`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('נשמר');
@@ -691,7 +731,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           );
         }
         const next = withAudit({ ...s, shiftTypes, weeks }, `עודכן סוג המשמרת "${name}" (${start}-${end}) בכל השבועות.`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('נשמר');
@@ -710,7 +750,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           weeks[wk] = insts.filter((i) => i.shiftTypeId !== id);
         }
         const next = withAudit({ ...s, shiftTypes, weeks }, `סוג המשמרת "${st.name}" נמחק (מכל השבועות).`);
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('נמחק');
@@ -726,7 +766,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           withCurrentInstances(s, [...currentInstances(s), inst]),
           `נוספה משמרת ייעודית: ${DAY_NAMES[day]} ${name} (${start}-${end}) לשבוע ${s.weekStartDate}.`
         );
-        saveState(next);
+        saveState(next, siteIdRef.current);
         return next;
       });
       toast('המשמרת נוספה');
@@ -737,7 +777,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   const clearAuditLog = useCallback(() => {
     setState((s) => {
       const next = { ...s, auditLog: [] };
-      saveState(next);
+      saveState(next, siteIdRef.current);
       return next;
     });
     toast('יומן השינויים נוקה');
@@ -748,6 +788,9 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     () => ({
       state,
       instances: currentInstances(state),
+      sites: SITES,
+      currentSiteId,
+      switchSite,
       tab,
       setTab,
       modal,
@@ -795,6 +838,8 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       state,
+      currentSiteId,
+      switchSite,
       tab,
       modal,
       openModal,

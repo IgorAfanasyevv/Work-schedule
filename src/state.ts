@@ -2,9 +2,9 @@ import type { AppState, Employee, ShiftType } from './types';
 import { buildTemplateInstances, uid } from './engine';
 import { mostRecentSundayISO } from './dateUtils';
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db, isFirebaseConfigured, STATE_COLLECTION, STATE_DOC_ID } from './firebaseClient';
+import { db, isFirebaseConfigured, STATE_COLLECTION } from './firebaseClient';
 
-const STORAGE_KEY = 'shift-scheduler-state';
+const STORAGE_KEY_PREFIX = 'shift-scheduler-state-';
 
 export function defaultShiftTypes(): ShiftType[] {
   return [
@@ -57,12 +57,12 @@ function withMigrations(raw: AppState & { instances?: unknown }): AppState {
 
 /* ------------------------------------------------------------------ */
 /*  local (per-browser) persistence — used automatically as a fallback  */
-/*  whenever Supabase env vars are not configured (e.g. local dev)      */
+/*  whenever Firebase env vars are not configured (e.g. local dev)      */
 /* ------------------------------------------------------------------ */
 
-export function loadLocalState(): AppState {
+export function loadLocalState(siteId: string): AppState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY_PREFIX + siteId);
     if (raw) return withMigrations(JSON.parse(raw) as AppState);
   } catch {
     /* fall through to default */
@@ -70,12 +70,12 @@ export function loadLocalState(): AppState {
   return defaultState();
 }
 
-let localSaveTimer: ReturnType<typeof setTimeout> | null = null;
-export function saveLocalState(state: AppState) {
-  if (localSaveTimer) clearTimeout(localSaveTimer);
-  localSaveTimer = setTimeout(() => {
+const localSaveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+export function saveLocalState(state: AppState, siteId: string) {
+  if (localSaveTimers[siteId]) clearTimeout(localSaveTimers[siteId]);
+  localSaveTimers[siteId] = setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY_PREFIX + siteId, JSON.stringify(state));
     } catch (e) {
       console.error('local save failed', e);
     }
@@ -84,23 +84,23 @@ export function saveLocalState(state: AppState) {
 
 /* ------------------------------------------------------------------ */
 /*  shared (Firebase Firestore) persistence — every visitor reads/      */
-/*  writes the same document, so everyone who opens the link sees the   */
-/*  same schedule, updated live                                         */
+/*  writes the same document for a given site, so everyone who opens    */
+/*  the link and picks that site sees the same schedule, updated live   */
 /* ------------------------------------------------------------------ */
 
-const stateDocRef = () => doc(db!, STATE_COLLECTION, STATE_DOC_ID);
+const stateDocRef = (siteId: string) => doc(db!, STATE_COLLECTION, siteId);
 
-export async function loadRemoteState(): Promise<AppState> {
+export async function loadRemoteState(siteId: string): Promise<AppState> {
   if (!db) return defaultState();
   try {
-    const snap = await getDoc(stateDocRef());
+    const snap = await getDoc(stateDocRef(siteId));
     if (snap.exists()) {
       const payload = snap.data() as { data?: AppState };
       if (payload.data) return withMigrations(payload.data);
     }
-    // first run: seed the document with the default state
+    // first run for this site: seed the document with the default state
     const seed = defaultState();
-    await setDoc(stateDocRef(), { data: seed, updatedAt: serverTimestamp() });
+    await setDoc(stateDocRef(siteId), { data: seed, updatedAt: serverTimestamp() });
     return seed;
   } catch (e) {
     console.error('remote load failed', e);
@@ -108,21 +108,21 @@ export async function loadRemoteState(): Promise<AppState> {
   }
 }
 
-let remoteSaveTimer: ReturnType<typeof setTimeout> | null = null;
-export function saveRemoteState(state: AppState) {
+const remoteSaveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+export function saveRemoteState(state: AppState, siteId: string) {
   if (!db) return;
-  if (remoteSaveTimer) clearTimeout(remoteSaveTimer);
-  remoteSaveTimer = setTimeout(() => {
-    setDoc(stateDocRef(), { data: state, updatedAt: serverTimestamp() }, { merge: true }).catch((e) =>
+  if (remoteSaveTimers[siteId]) clearTimeout(remoteSaveTimers[siteId]);
+  remoteSaveTimers[siteId] = setTimeout(() => {
+    setDoc(stateDocRef(siteId), { data: state, updatedAt: serverTimestamp() }, { merge: true }).catch((e) =>
       console.error('remote save failed', e)
     );
   }, 400);
 }
 
-/** subscribe to live changes (from any tab/user); returns an unsubscribe function */
-export function subscribeRemoteState(onChange: (state: AppState) => void): () => void {
+/** subscribe to live changes for one site (from any tab/user); returns an unsubscribe function */
+export function subscribeRemoteState(siteId: string, onChange: (state: AppState) => void): () => void {
   if (!db) return () => {};
-  const unsubscribe = onSnapshot(stateDocRef(), (snap) => {
+  const unsubscribe = onSnapshot(stateDocRef(siteId), (snap) => {
     if (snap.exists()) {
       const payload = snap.data() as { data?: AppState };
       if (payload.data) onChange(withMigrations(payload.data));
@@ -135,11 +135,11 @@ export function subscribeRemoteState(onChange: (state: AppState) => void): () =>
 /*  unified entry points used by the app — pick remote vs local         */
 /* ------------------------------------------------------------------ */
 
-export async function loadState(): Promise<AppState> {
-  return isFirebaseConfigured ? loadRemoteState() : loadLocalState();
+export async function loadState(siteId: string): Promise<AppState> {
+  return isFirebaseConfigured ? loadRemoteState(siteId) : loadLocalState(siteId);
 }
 
-export function saveState(state: AppState) {
-  if (isFirebaseConfigured) saveRemoteState(state);
-  else saveLocalState(state);
+export function saveState(state: AppState, siteId: string) {
+  if (isFirebaseConfigured) saveRemoteState(state, siteId);
+  else saveLocalState(state, siteId);
 }

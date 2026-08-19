@@ -22,6 +22,5 @@ if (isFirebaseConfigured) {
 
 export const db = firestore;
 
-/** everyone reads/writes this single shared document */
+/** each site's data lives in its own document under this collection, keyed by site id */
 export const STATE_COLLECTION = 'appState';
-export const STATE_DOC_ID = 'default';

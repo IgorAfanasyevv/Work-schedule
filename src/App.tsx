@@ -19,7 +19,7 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
 ];
 
 function Shell() {
-  const { tab, setTab, state, instances, isLoaded, isShared } = useScheduler();
+  const { tab, setTab, state, instances, isLoaded, isShared, sites, currentSiteId, switchSite } = useScheduler();
 
   if (!isLoaded) {
     return (
@@ -39,6 +39,28 @@ function Shell() {
           <div className="k">Ops · 24/7</div>
           <h1>מוקד סידורים</h1>
           <div className="sub">{state.weekLabel}</div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '0 8px 14px 8px' }}>
+          {sites.map((site) => (
+            <button
+              key={site.id}
+              onClick={() => switchSite(site.id)}
+              style={{
+                textAlign: 'right',
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: '1px solid ' + (site.id === currentSiteId ? 'var(--teal)' : 'var(--border)'),
+                background: site.id === currentSiteId ? 'rgba(79,209,197,.1)' : 'var(--panel-2)',
+                color: site.id === currentSiteId ? 'var(--teal)' : 'var(--text-dim)',
+                fontSize: 12.5,
+                fontWeight: site.id === currentSiteId ? 700 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              {site.id === currentSiteId ? '● ' : ''}
+              {site.name}
+            </button>
+          ))}
         </div>
         {NAV_ITEMS.map((item) => (
           <button
