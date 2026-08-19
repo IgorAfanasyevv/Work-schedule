@@ -22,6 +22,15 @@ export function durationHours(start: string, end: string): number {
   return +((e - s) / 60).toFixed(2);
 }
 
+/** shifts a "HH:MM" time by N hours (can be negative), wrapping correctly around midnight */
+export function addHoursToTime(time: string, hours: number): string {
+  let total = toMinutes(time) + hours * 60;
+  total = ((total % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(total / 60)).padStart(2, '0');
+  const mm = String(total % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 /** absolute [start,end] range in minutes-since-week-start, handling overnight wrap */
 export function shiftAbsRange(dayIdx: number, start: string, end: string): [number, number] {
   const sMin = toMinutes(start);
@@ -80,7 +89,11 @@ export function buildTemplateInstances(shiftTypes: ShiftType[]): ShiftInstance[]
       list.push(makeInstance(d, st));
       const needsWeekendReinforcement = d === SATURDAY || (d === FRIDAY && st.category !== 'morning');
       if (needsWeekendReinforcement) {
-        list.push(makeInstance(d, st));
+        // the second person on a shared shift comes an hour later (and leaves an hour later) than
+        // the first, rather than clocking in at the exact same time - e.g. 13:45–22:00 + 15:00–23:00
+        list.push(
+          makeInstance(d, { ...st, start: addHoursToTime(st.start, 1), end: addHoursToTime(st.end, 1) })
+        );
       }
     });
   }

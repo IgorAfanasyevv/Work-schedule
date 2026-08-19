@@ -9,7 +9,9 @@ import type {
 } from './types';
 import { REASON_LABELS, DAY_NAMES } from './types';
 import {
+  addHoursToTime,
   assigneeLabel,
+  durationHours,
   findReplacements,
   generateFullSchedule,
   getEligibility,
@@ -730,9 +732,16 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       setState((s) => {
         const source = currentInstances(s).find((i) => i.id === instanceId);
         if (!source) return s;
+        // the second person comes an hour later (and leaves an hour later) than the first, not at
+        // the exact same time - e.g. 13:45–22:00 + 15:00–23:00
+        const start = addHoursToTime(source.start, 1);
+        const end = addHoursToTime(source.end, 1);
         const clone: ShiftInstance = {
           ...source,
           id: uid(),
+          start,
+          end,
+          durationHours: durationHours(start, end),
           employeeId: null,
           tempWorkerName: null,
           manual: false,
@@ -740,12 +749,12 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
         };
         const next = withAudit(
           withCurrentInstances(s, [...currentInstances(s), clone]),
-          `נוסף תא נוסף ל-${DAY_NAMES[source.day]} ${source.name} (${source.start}-${source.end}) - לשיבוץ עובד שני.`
+          `נוסף תא נוסף ל-${DAY_NAMES[source.day]} ${source.name} (${start}-${end}, שעה אחרי הראשון) - לשיבוץ עובד שני.`
         );
         saveState(next, siteIdRef.current);
         return next;
       });
-      toast('נוסף מקום שני לאותה משמרת');
+      toast('נוסף מקום שני לאותה משמרת (שעה מאוחר יותר)');
     },
     [withAudit, toast]
   );

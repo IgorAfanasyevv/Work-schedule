@@ -193,6 +193,21 @@ function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showD
             {slotLabel}
           </span>
         )}
+        {inst.durationHours >= 11.5 && (
+          <span
+            title="משמרת של 12 שעות"
+            style={{
+              marginRight: 6,
+              color: 'var(--amber)',
+              background: 'rgba(240,169,78,.14)',
+              borderRadius: 4,
+              padding: '0 5px',
+              fontWeight: 700,
+            }}
+          >
+            12 שעות
+          </span>
+        )}
       </div>
       {label ? (
         <div className="who">
