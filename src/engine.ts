@@ -87,7 +87,14 @@ export function buildTemplateInstances(shiftTypes: ShiftType[]): ShiftInstance[]
   for (let d = 0; d < 7; d++) {
     shiftTypes.forEach((st) => {
       list.push(makeInstance(d, st));
-      const needsWeekendReinforcement = d === SATURDAY || (d === FRIDAY && st.category !== 'morning');
+      // NOTE: 'night' is deliberately excluded here. Every day already has TWO separate night-type
+      // shift definitions (e.g. 21:45–06:00 and 23:00–07:00), each needing its own person - that's
+      // already "2 people covering the night" without any doubling. Doubling night on top of that
+      // demanded 4 different people for Friday/Saturday nights alone, which - combined with the
+      // max-3-nights/max-2-consecutive rule - left far more of the week structurally unfillable
+      // than intended. Morning/afternoon/other categories still get reinforced on the weekend.
+      const needsWeekendReinforcement =
+        st.category !== 'night' && (d === SATURDAY || (d === FRIDAY && st.category !== 'morning'));
       if (needsWeekendReinforcement) {
         // the second person on a shared shift comes an hour later (and leaves an hour later) than
         // the first, rather than clocking in at the exact same time - e.g. 13:45–22:00 + 15:00–23:00
