@@ -163,7 +163,7 @@ function statusClass(status: ReturnType<typeof instanceStatus>): string {
   return 'st-filled';
 }
 
-function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boolean }) {
+function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showDelete?: boolean; slotLabel?: string }) {
   const { state, instances, openModal, setAssignMode, deleteInstance } = useScheduler();
   const status = instanceStatus(inst);
   const label = assigneeLabel(inst, state.employees);
@@ -179,6 +179,20 @@ function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boo
     >
       <div className="time mono">
         {inst.start}–{inst.end}
+        {slotLabel && (
+          <span
+            style={{
+              marginRight: 6,
+              color: 'var(--violet)',
+              background: 'rgba(199,146,234,.14)',
+              borderRadius: 4,
+              padding: '0 5px',
+              fontWeight: 700,
+            }}
+          >
+            {slotLabel}
+          </span>
+        )}
       </div>
       {label ? (
         <div className="who">
@@ -230,8 +244,13 @@ function DaySlotCell({ day, stId, instances }: { day: number; stId: string; inst
 
   return (
     <div style={{ position: 'relative' }}>
-      {matches.map((inst) => (
-        <ShiftCell inst={inst} key={inst.id} showDelete={matches.length > 1} />
+      {matches.map((inst, idx) => (
+        <ShiftCell
+          inst={inst}
+          key={inst.id}
+          showDelete={matches.length > 1}
+          slotLabel={idx > 0 ? `קנה ${idx + 1}` : undefined}
+        />
       ))}
       <button
         type="button"
