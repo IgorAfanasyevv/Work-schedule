@@ -192,8 +192,8 @@ function HeaderActions() {
   );
 }
 
-function statusClass(status: ReturnType<typeof instanceStatus>): string {
-  if (status === 'empty') return 'st-empty';
+function statusClass(status: ReturnType<typeof instanceStatus>, isWeekend: boolean): string {
+  if (status === 'empty') return isWeekend ? 'st-empty' : 'st-empty-plain';
   if (status === 'manual') return 'st-manual';
   if (status === 'warn') return 'st-warn';
   if (status === 'temp') return 'st-temp';
@@ -204,10 +204,11 @@ function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boo
   const { state, instances, openModal, setAssignMode, deleteInstance } = useScheduler();
   const status = instanceStatus(inst);
   const label = assigneeLabel(inst, state.employees);
+  const isWeekend = inst.day === 5 || inst.day === 6;
 
   return (
     <div
-      className={`shift-cell ${statusClass(status)}`}
+      className={`shift-cell ${statusClass(status, isWeekend)}`}
       style={{ marginBottom: 4 }}
       onClick={() => {
         setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
@@ -226,8 +227,10 @@ function ShiftCell({ inst, showDelete }: { inst: ShiftInstance; showDelete?: boo
             </span>
           )}
         </div>
-      ) : (
+      ) : isWeekend ? (
         <div className="empty-msg">⛔ לא מאוישת</div>
+      ) : (
+        <div className="empty-msg-plain">לא מאוישת</div>
       )}
       {inst.exception && (
         <div className="cell-icons">
@@ -375,7 +378,9 @@ function CalendarView() {
                 const status = instanceStatus(inst);
                 const color =
                   status === 'empty'
-                    ? 'var(--red-dim)'
+                    ? isWeekend
+                      ? 'var(--red-dim)'
+                      : 'var(--panel-2)'
                     : status === 'manual'
                     ? 'var(--blue-dim)'
                     : status === 'warn'
@@ -385,7 +390,9 @@ function CalendarView() {
                     : 'var(--green-dim)';
                 const fg =
                   status === 'empty'
-                    ? 'var(--red)'
+                    ? isWeekend
+                      ? 'var(--red)'
+                      : 'var(--text-faint)'
                     : status === 'manual'
                     ? 'var(--blue)'
                     : status === 'warn'
