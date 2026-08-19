@@ -2,9 +2,10 @@ import React from 'react';
 import { useScheduler } from '../SchedulerContext';
 import { isAssigned } from '../engine';
 import { DAY_NAMES } from '../types';
+import { addMonthsISO, todayISO } from '../dateUtils';
 
 export default function Dashboard() {
-  const { state, instances, fullGenerate, localRecalc, openModal, isGenerating } = useScheduler();
+  const { state, instances, fullGenerate, localRecalc, openModal, setTab, isGenerating } = useScheduler();
   const { employees } = state;
 
   const total = instances.length;
@@ -15,6 +16,12 @@ export default function Dashboard() {
   ).length;
   const exceptions = instances.filter((i) => i.exception).length;
   const problems = empty + exceptions;
+
+  const today = todayISO();
+  const refresherDue = employees.filter((e) => {
+    if (!e.lastRefresherDate) return false;
+    return today >= addMonthsISO(e.lastRefresherDate, 2);
+  });
 
   return (
     <>
@@ -81,6 +88,14 @@ export default function Dashboard() {
           {exceptions > 0 && <div className="reason-item">🟡 {exceptions} שיבוצים חורגים מהחוקים (אושרו ידנית)</div>}
           {empty === 0 && belowTarget === 0 && exceptions === 0 && (
             <div className="reason-item">🟢 כל האילוצים תקינים, אין בעיות פתוחות</div>
+          )}
+          {refresherDue.length > 0 && (
+            <div className="reason-item" style={{ justifyContent: 'space-between' }}>
+              <span>🟡 {refresherDue.length} עובדים קרובים לפקיעת תוקף ריענון (או פג תוקף)</span>
+              <button className="btn sm" onClick={() => setTab('refreshers')}>
+                לצפייה
+              </button>
+            </div>
           )}
 
           <h3 style={{ marginTop: 18 }}>משמרות לא מאוישות</h3>

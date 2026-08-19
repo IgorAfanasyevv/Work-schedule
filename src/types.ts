@@ -34,6 +34,8 @@ export interface Employee {
   desiredShifts: number;
   maxShifts: number;
   blocks: EmployeeBlock[];
+  /** ISO date (YYYY-MM-DD) of this guard's last רענון (mandatory ~3-month security refresher) */
+  lastRefresherDate?: string;
 }
 
 export interface ShiftInstance {
@@ -127,4 +129,4 @@ export const REASON_LABELS: Record<EligibilityReasonType, string> = {
   consecutiveNights: 'השיבוץ ייצור יותר מ-2 לילות רצופים',
 };
 
-export const ABSENCE_REASONS = ['מילואים', 'מחלה', 'נסיבות אישיות', 'מצב חירום', 'אחר'] as const;
+export const ABSENCE_REASONS = ['מילואים', 'מחלה', 'נסיבות אישיות', 'מצב חירום', 'רענון', 'אחר'] as const;

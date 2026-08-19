@@ -65,10 +65,24 @@ export function makeInstance(
   };
 }
 
+/**
+ * Friday & Saturday get reinforced (2-person) coverage automatically, since that's the weekend
+ * shift for a security team: every Saturday slot, and every Friday slot except the morning one
+ * (which ends before the weekend reinforcement window starts), gets a second slot from the start
+ * so the manager never has to remember to click "+ הוסף עובד שני" for the weekend.
+ */
 export function buildTemplateInstances(shiftTypes: ShiftType[]): ShiftInstance[] {
+  const FRIDAY = 5;
+  const SATURDAY = 6;
   const list: ShiftInstance[] = [];
   for (let d = 0; d < 7; d++) {
-    shiftTypes.forEach((st) => list.push(makeInstance(d, st)));
+    shiftTypes.forEach((st) => {
+      list.push(makeInstance(d, st));
+      const needsWeekendReinforcement = d === SATURDAY || (d === FRIDAY && st.category !== 'morning');
+      if (needsWeekendReinforcement) {
+        list.push(makeInstance(d, st));
+      }
+    });
   }
   return list;
 }

@@ -23,7 +23,7 @@ import { isFirebaseConfigured } from './firebaseClient';
 import { addDaysISO, mostRecentSundayISO } from './dateUtils';
 import { currentInstances, withCurrentInstances, ensureWeekSeeded } from './weekStore';
 
-export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes';
+export type Tab = 'dashboard' | 'schedule' | 'myshifts' | 'employees' | 'shifttypes' | 'refreshers';
 
 export type ModalState =
   | { type: 'shiftDetail'; instanceId: string }
@@ -82,10 +82,11 @@ interface Ctx {
 
   addEmployee: (name: string, desired: number, max: number) => void;
   updateEmployee: (id: string, name: string, desired: number, max: number) => void;
+  setLastRefresherDate: (employeeId: string, dateISO: string) => void;
   deleteEmployee: (id: string) => void;
   addBlock: (employeeId: string, block: EmployeeBlock) => void;
   removeBlock: (employeeId: string, idx: number) => void;
-  setDayConstraints: (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[], reason?: string) => void;
+  setDayConstraints: (employeeId: string, day: number, dayOff: boolean, blockedCategories: Category[], reason?: string) => void;
 
   addShiftType: (name: string, start: string, end: string, category: Category) => void;
   updateShiftType: (id: string, name: string, start: string, end: string, category: Category) => void;
@@ -480,6 +481,21 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     [withAudit, toast]
   );
 
+  const setLastRefresherDate = useCallback(
+    (employeeId: string, dateISO: string) => {
+      setState((s) => {
+        const e = s.employees.find((x) => x.id === employeeId);
+        if (!e) return s;
+        const employees = s.employees.map((x) => (x.id === employeeId ? { ...x, lastRefresherDate: dateISO } : x));
+        const next = withAudit({ ...s, employees }, `${e.name}: תאריך ריענון אחרון עודכן ל-${dateISO}.`);
+        saveState(next);
+        return next;
+      });
+      toast('התאריך נשמר');
+    },
+    [withAudit, toast]
+  );
+
   const deleteEmployee = useCallback(
     (id: string) => {
       setState((s) => {
@@ -538,30 +554,31 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
    * blocks (managed from the "עובדים" tab) untouched.
    */
   const setDayConstraints = useCallback(
-    (employeeId: string, day: number, dayOff: boolean, blockedShiftTypeIds: string[], reason?: string) => {
+    (employeeId: string, day: number, dayOff: boolean, blockedCategories: Category[], reason?: string) => {
       setState((s) => {
         const e = s.employees.find((x) => x.id === employeeId);
         if (!e) return s;
         const week = s.weekStartDate;
-        // only drop THIS week's own day/shift blocks for that day — blocks tagged with any other
-        // week (or untagged legacy ones from before this feature existed) are left untouched, so
-        // nothing is ever erased and older weeks stay exactly as they were when you view them again
+        // only drop THIS week's own day/category blocks for that day — blocks tagged with any
+        // other week (or untagged legacy ones from before this feature existed) are left
+        // untouched, so nothing is ever erased and older weeks stay exactly as they were
         const kept = e.blocks.filter((b) => {
           if (b.weekStartDate !== week) return true;
           if (b.scope === 'day' && b.day === day) return false;
-          if (b.scope === 'shift' && b.day === day) return false;
+          if (b.scope === 'category' && b.day === day) return false;
+          if (b.scope === 'shift' && b.day === day) return false; // clean up any legacy per-shift blocks for this day too
           return true;
         });
         const additions: EmployeeBlock[] = dayOff
           ? [{ scope: 'day', day, reason: reason || undefined, weekStartDate: week }]
-          : blockedShiftTypeIds.map((shiftTypeId) => ({ scope: 'shift', day, shiftTypeId, weekStartDate: week }));
+          : blockedCategories.map((category) => ({ scope: 'category', day, category, weekStartDate: week }));
         const employees = s.employees.map((x) =>
           x.id === employeeId ? { ...x, blocks: [...kept, ...additions] } : x
         );
         const text = dayOff
           ? `${e.name}: סומן כ${reason || 'יום חופש'} ב${DAY_NAMES[day]} (שבוע ${week}).`
-          : blockedShiftTypeIds.length
-          ? `${e.name}: עודכנו משמרות חסומות ב${DAY_NAMES[day]} (${blockedShiftTypeIds.length}, שבוע ${week}).`
+          : blockedCategories.length
+          ? `${e.name}: עודכנו קטגוריות משמרת חסומות ב${DAY_NAMES[day]} (${blockedCategories.length}, שבוע ${week}).`
           : `${e.name}: הוסרו כל החסימות ל${DAY_NAMES[day]} לשבוע ${week} (זמין לכל המשמרות באותו שבוע).`;
         const next = withAudit({ ...s, employees }, text);
         saveState(next);
@@ -765,6 +782,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       deleteInstance,
       addEmployee,
       updateEmployee,
+      setLastRefresherDate,
       deleteEmployee,
       addBlock,
       removeBlock,
@@ -806,6 +824,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       deleteInstance,
       addEmployee,
       updateEmployee,
+      setLastRefresherDate,
       deleteEmployee,
       addBlock,
       removeBlock,

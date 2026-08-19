@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import Modal from '../ui/Modal';
 import { useScheduler } from '../../SchedulerContext';
-import { ABSENCE_REASONS, DAY_NAMES } from '../../types';
+import { ABSENCE_REASONS, CATEGORY_LABEL, DAY_NAMES } from '../../types';
+import type { Category } from '../../types';
 import { dateForDayIndex, formatDDMM } from '../../dateUtils';
 
 const PLAIN_DAY_OFF = 'חופש';
@@ -15,24 +16,28 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
   const thisWeekBlocks = (e?.blocks || []).filter((b) => !b.weekStartDate || b.weekStartDate === week);
 
   const existingDayOffBlock = thisWeekBlocks.find((b) => b.scope === 'day' && b.day === day);
-  const existingShiftIds = new Set(
-    thisWeekBlocks.filter((b) => b.scope === 'shift' && b.day === day).map((b) => b.shiftTypeId as string)
+  const existingCategories = new Set(
+    thisWeekBlocks.filter((b) => b.scope === 'category' && b.day === day).map((b) => b.category as Category)
   );
-  const existingCategoryBlocks = thisWeekBlocks.filter(
-    (b) => b.scope === 'category' && (b.day === day || b.day === 'all')
-  );
+  // a standing "all week" category block from the "עובדים" tab is shown as a note, not editable here
+  const standingCategoryBlocks = (e?.blocks || []).filter((b) => b.scope === 'category' && b.day === 'all');
 
   const [dayOff, setDayOff] = useState(!!existingDayOffBlock);
   const [reason, setReason] = useState<string>(existingDayOffBlock?.reason || PLAIN_DAY_OFF);
-  const [selectedShifts, setSelectedShifts] = useState<Set<string>>(new Set(existingShiftIds));
+  const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(new Set(existingCategories));
 
   if (!e) return null;
 
-  function toggleShift(id: string) {
-    setSelectedShifts((prev) => {
+  // one checkbox per CATEGORY (not per shift type) — so "night" covers every night-category shift
+  // definition together (e.g. 21:45–06:00 and 23:00–07:00 both), instead of asking the employee to
+  // separately opt in/out of what is really the same "can I work nights" preference
+  const categories = Array.from(new Set(state.shiftTypes.map((st) => st.category)));
+
+  function toggleCategory(cat: Category) {
+    setSelectedCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
       return next;
     });
   }
@@ -42,7 +47,7 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
       employeeId,
       day,
       dayOff,
-      dayOff ? [] : Array.from(selectedShifts),
+      dayOff ? [] : Array.from(selectedCategories),
       dayOff ? (reason === PLAIN_DAY_OFF ? undefined : reason) : undefined
     );
     closeModal();
@@ -87,7 +92,7 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
         }}
       >
         <input type="checkbox" checked={dayOff} onChange={(ev) => setDayOff(ev.target.checked)} />
-        <span style={{ fontWeight: 600 }}>יום חופש — לא עובד כלל ביום זה</span>
+        <span style={{ fontWeight: 600 }}>יום חופש / לא במשמרת — לא עובד משמרת ביום זה</span>
       </label>
 
       {dayOff && (
@@ -101,34 +106,39 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
               </option>
             ))}
           </select>
+          {reason === 'רענון' && (
+            <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 6 }}>
+              יום רענון נחשב יום עבודה לצורך נוכחות, אך העובד לא זמין למשמרת ביום זה. את תאריך
+              הריענון האחרון מנהלים בטאב "מעקב ריענונים".
+            </div>
+          )}
         </div>
       )}
 
       {!dayOff && (
         <div className="field">
-          <label>אילו משמרות לא ניתן לעבוד ביום זה? (ניתן לבחור כמה שרוצים)</label>
-          {state.shiftTypes.length === 0 ? (
+          <label>אילו סוגי משמרת לא ניתן לעבוד ביום זה? (ניתן לבחור כמה שרוצים)</label>
+          {categories.length === 0 ? (
             <div style={{ fontSize: 12.5, color: 'var(--text-faint)' }}>אין עדיין סוגי משמרות מוגדרים.</div>
           ) : (
-            state.shiftTypes.map((st) => (
+            categories.map((cat) => (
               <label
-                key={st.id}
+                key={cat}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 2px', cursor: 'pointer' }}
               >
-                <input type="checkbox" checked={selectedShifts.has(st.id)} onChange={() => toggleShift(st.id)} />
-                <span>
-                  {st.name}{' '}
-                  <span className="mono" style={{ color: 'var(--text-faint)', fontSize: 11.5 }}>
-                    ({st.start}–{st.end})
-                  </span>
-                </span>
+                <input
+                  type="checkbox"
+                  checked={selectedCategories.has(cat)}
+                  onChange={() => toggleCategory(cat)}
+                />
+                <span>{CATEGORY_LABEL[cat]}</span>
               </label>
             ))
           )}
         </div>
       )}
 
-      {existingCategoryBlocks.length > 0 && (
+      {standingCategoryBlocks.length > 0 && (
         <div
           style={{
             fontSize: 12,
@@ -138,8 +148,8 @@ export default function DayConstraintsModal({ employeeId, day }: { employeeId: s
             borderTop: '1px dashed var(--border-soft)',
           }}
         >
-          לעובד יש גם חסימת קטגוריה כללית שחלה על היום הזה (מוגדרת בטאב "עובדים") — היא לא נערכת מכאן, רק
-          החסימות הספציפיות ליום הזה.
+          לעובד יש גם חסימה קבועה (לכל השבועות) שחלה על היום הזה, שהוגדרה בטאב "עובדים" — היא לא
+          נערכת מכאן.
         </div>
       )}
     </Modal>

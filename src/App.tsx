@@ -5,6 +5,7 @@ import ScheduleView from './components/ScheduleView';
 import MyShifts from './components/MyShifts';
 import Employees from './components/Employees';
 import ShiftTypes from './components/ShiftTypes';
+import RefresherTracking from './components/RefresherTracking';
 import ModalHost from './components/ModalHost';
 import Toasts from './components/ui/Toasts';
 
@@ -14,6 +15,7 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: 'myshifts', label: 'המשמרות שלי' },
   { id: 'employees', label: 'עובדים' },
   { id: 'shifttypes', label: 'סוגי משמרות' },
+  { id: 'refreshers', label: 'מעקב ריענונים' },
 ];
 
 function Shell() {
@@ -82,6 +84,7 @@ function Shell() {
         {tab === 'myshifts' && <MyShifts />}
         {tab === 'employees' && <Employees />}
         {tab === 'shifttypes' && <ShiftTypes />}
+        {tab === 'refreshers' && <RefresherTracking />}
       </div>
       <ModalHost />
       <Toasts />

@@ -1,16 +1,12 @@
 import React from 'react';
 import { useScheduler } from '../SchedulerContext';
 import { CATEGORY_LABEL, DAY_NAMES } from '../types';
-import type { Employee, ShiftInstance } from '../types';
+import type { Category, Employee } from '../types';
 import { dateForDayIndex, formatDDMM } from '../dateUtils';
 
-type CellView =
-  | { kind: 'dayOff'; label: string }
-  | { kind: 'partial'; count: number }
-  | { kind: 'assigned'; label: string }
-  | { kind: 'blank' };
+type CellView = { kind: 'dayOff'; label: string } | { kind: 'available'; label: string };
 
-function cellView(e: Employee, day: number, week: string, instances: ShiftInstance[]): CellView {
+function cellView(e: Employee, day: number, week: string, allCategories: Category[]): CellView {
   // only blocks tagged for THIS week (or untagged/standing ones from the "עובדים" tab) count here —
   // a block saved while looking at a different week stays inert and invisible on this one
   const thisWeekBlocks = e.blocks.filter((b) => !b.weekStartDate || b.weekStartDate === week);
@@ -18,20 +14,20 @@ function cellView(e: Employee, day: number, week: string, instances: ShiftInstan
   const dayOffBlock = thisWeekBlocks.find((b) => b.scope === 'day' && b.day === day);
   if (dayOffBlock) return { kind: 'dayOff', label: dayOffBlock.reason || 'חופש' };
 
-  const shiftBlockCount = thisWeekBlocks.filter((b) => b.scope === 'shift' && b.day === day).length;
-  const hasCategoryBlock = thisWeekBlocks.some((b) => b.scope === 'category' && (b.day === day || b.day === 'all'));
-  const totalPartial = shiftBlockCount + (hasCategoryBlock ? 1 : 0);
-  if (totalPartial > 0) return { kind: 'partial', count: totalPartial };
-
-  const assignedInstance = instances.find((i) => i.employeeId === e.id && i.day === day);
-  if (assignedInstance) return { kind: 'assigned', label: CATEGORY_LABEL[assignedInstance.category] };
-
-  return { kind: 'blank' };
+  const blockedCategories = new Set(
+    thisWeekBlocks
+      .filter((b) => b.scope === 'category' && (b.day === day || b.day === 'all'))
+      .map((b) => b.category as Category)
+  );
+  const available = allCategories.filter((c) => !blockedCategories.has(c));
+  if (available.length === 0) return { kind: 'dayOff', label: 'לא זמין' };
+  return { kind: 'available', label: available.map((c) => CATEGORY_LABEL[c]).join('/') };
 }
 
 export default function AvailabilityGrid() {
   const { state, instances, openModal, clearWeekPreferences } = useScheduler();
-  const { employees, weekStartDate } = state;
+  const { employees, weekStartDate, shiftTypes } = state;
+  const allCategories = Array.from(new Set(shiftTypes.map((st) => st.category)));
 
   return (
     <div className="card" style={{ marginTop: 18 }}>
@@ -49,25 +45,20 @@ export default function AvailabilityGrid() {
         </button>
       </div>
       <p style={{ fontSize: 12.5, color: 'var(--text-dim)', marginTop: 10, marginBottom: 14 }}>
-        לחצו על תא כדי לפתוח חלון ולסמן לאותו עובד ויום: יום חופש (כולל סיבה כמו מילואים), או משמרות
-        ספציפיות שהוא לא יכול לעבוד באותו יום. הטבלה מציגה תמיד את השבוע שנבחר למעלה — כל שבוע שומר
-        את הסימונים שלו בנפרד, כך שהם לא נמחקים כשעוברים לשבוע הבא, אבל גם לא משפיעים עליו: שבוע חדש
-        מתחיל תמיד נקי, עד שתסמנו בו משהו. כפתור "נקה סידור לגמרי" למעלה מנקה רק את השיבוצים בפועל —
-        הוא לעולם לא מוחק העדפות שסימנתם כאן.
+        לחצו על תא כדי לפתוח חלון ולסמן לאותו עובד ויום: יום חופש/רענון (לא במשמרת כלל), או סוגי
+        משמרת ספציפיים שהוא לא יכול לעבוד באותו יום. התא הירוק מציג אילו סוגי משמרת העובד עדיין
+        פתוח אליהם באותו יום. הטבלה מציגה תמיד את השבוע שנבחר למעלה — כל שבוע שומר את הסימונים שלו
+        בנפרד, כך שהם לא נמחקים כשעוברים לשבוע הבא, אבל גם לא משפיעים עליו.
       </p>
 
       <div className="legend">
         <span>
           <i style={{ background: 'var(--green)' }} />
-          משובץ בפועל למשמרת
-        </span>
-        <span>
-          <i style={{ background: 'var(--amber)' }} />
-          חלק מהמשמרות חסומות
+          פתוח (רואים לאילו משמרות)
         </span>
         <span>
           <i style={{ background: 'var(--red)' }} />
-          יום חופש / מילואים
+          חופש / רענון / לא זמין
         </span>
       </div>
 
@@ -100,7 +91,8 @@ export default function AvailabilityGrid() {
                     {nights}/3
                   </td>
                   {DAY_NAMES.map((_, day) => {
-                    const view = cellView(e, day, weekStartDate, instances);
+                    const view = cellView(e, day, weekStartDate, allCategories);
+                    const isDayOff = view.kind === 'dayOff';
                     return (
                       <td key={day}>
                         <button
@@ -111,39 +103,15 @@ export default function AvailabilityGrid() {
                             width: '100%',
                             minHeight: 44,
                             borderRadius: 8,
-                            border: view.kind === 'blank' ? '1px dashed var(--border-soft)' : '1px solid var(--border)',
+                            border: '1px solid ' + (isDayOff ? 'var(--red)' : 'var(--green)'),
                             cursor: 'pointer',
                             fontSize: 12.5,
-                            fontWeight: 600,
-                            color:
-                              view.kind === 'dayOff'
-                                ? 'var(--red)'
-                                : view.kind === 'partial'
-                                ? 'var(--amber)'
-                                : view.kind === 'assigned'
-                                ? 'var(--green)'
-                                : 'var(--text-faint)',
-                            background:
-                              view.kind === 'dayOff'
-                                ? 'rgba(239,91,91,.08)'
-                                : view.kind === 'partial'
-                                ? 'rgba(240,169,78,.08)'
-                                : view.kind === 'assigned'
-                                ? 'rgba(95,211,130,.06)'
-                                : 'transparent',
+                            fontWeight: 700,
+                            color: isDayOff ? '#2a0d0d' : '#0a2e17',
+                            background: isDayOff ? 'var(--red)' : 'var(--green)',
                           }}
                         >
-                          {view.kind === 'dayOff' && view.label}
-                          {view.kind === 'partial' && (
-                            <span>
-                              חלקי
-                              <span style={{ display: 'block', fontSize: 10.5, fontWeight: 400, marginTop: 2 }}>
-                                {view.count} משמרות חסומות
-                              </span>
-                            </span>
-                          )}
-                          {view.kind === 'assigned' && view.label}
-                          {view.kind === 'blank' && ''}
+                          {view.label}
                         </button>
                       </td>
                     );

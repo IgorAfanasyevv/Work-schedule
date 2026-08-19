@@ -42,3 +42,19 @@ export function yearOfWeek(weekStartISO: string): number {
   // use the Thursday of the week so a week spanning New Year's shows the year most of it falls in
   return dateForDayIndex(weekStartISO, 4).getFullYear();
 }
+
+export function addMonthsISO(iso: string, months: number): string {
+  const date = parseISODate(iso);
+  date.setMonth(date.getMonth() + months);
+  return toISODate(date);
+}
+
+export function todayISO(): string {
+  return toISODate(new Date());
+}
+
+/** whole days between two ISO dates (b - a). Positive if b is after a. */
+export function daysBetweenISO(a: string, b: string): number {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((parseISODate(b).getTime() - parseISODate(a).getTime()) / msPerDay);
+}
