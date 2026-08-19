@@ -99,8 +99,6 @@ export default function ScheduleView() {
         </div>
       </div>
 
-      <GapBanner />
-
       <div className="legend">
         <span>
           <i style={{ background: 'var(--green)' }} />
@@ -140,41 +138,6 @@ export default function ScheduleView() {
 
       <AvailabilityGrid />
     </>
-  );
-}
-
-function GapBanner() {
-  const { instances, openModal } = useScheduler();
-  const gaps = instances.filter((i) => !i.employeeId && !i.tempWorkerName).sort((a, b) => a.day - b.day);
-  const filledCount = instances.length - gaps.length;
-  // don't nag about a week nobody has touched yet - only show once a schedule was actually
-  // attempted (at least one slot got filled) and some gaps are still left over
-  if (gaps.length === 0 || filledCount === 0) return null;
-
-  return (
-    <div
-      className="card"
-      style={{ borderColor: 'var(--red)', background: 'rgba(239,91,91,.07)', padding: '14px 18px', marginBottom: 16 }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 18 }}>🔴</span>
-        <b style={{ fontSize: 14.5 }}>
-          יש {gaps.length} משמרות לא מאוישות בסידור הנוכחי — יש "חורים" שדורשים טיפול
-        </b>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {gaps.map((g) => (
-          <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-            <span>
-              ⛔ {DAY_NAMES[g.day]} · {g.name} · {g.start}–{g.end}
-            </span>
-            <button className="btn sm" onClick={() => openModal({ type: 'replacements', instanceId: g.id })}>
-              מצא מחליף
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
