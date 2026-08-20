@@ -12,6 +12,16 @@ const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
   filled: { cls: 'b-green', label: 'מאוישת' },
 };
 
+/** accepts 24-hour "HH:MM", with or without a leading zero on the hour (e.g. both "5:45" and "05:45") */
+function isValidTime(value: string): boolean {
+  return /^([01]?\d|2[0-3]):[0-5]\d$/.test(value.trim());
+}
+
+function normalizeTime(value: string): string {
+  const [h, m] = value.trim().split(':');
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+}
+
 export default function ShiftDetailModal({ instanceId }: { instanceId: string }) {
   const {
     state,
@@ -129,39 +139,45 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
           שעות מותאמות אישית לתא הזה בלבד (לדוגמה: העובד הזה מגיע 7:00–15:00 במקום השעות הרגילות)
         </label>
         {customTime && (
-          <div className="field-row" style={{ marginTop: 8 }}>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>שעת התחלה</label>
-              <input
-                type="time"
-                value={customStart}
-                onChange={(ev) => {
-                  // native time inputs fire onChange with an EMPTY value while the user is still
-                  // mid-way through picking (e.g. hour set but not minutes yet) - ignoring that
-                  // intermediate empty event is what stops the field from visually "resetting"
-                  // while you're still typing
-                  if (ev.target.value) setCustomStart(ev.target.value);
-                }}
-              />
+          <>
+            <div className="field-row" style={{ marginTop: 8 }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>שעת התחלה (HH:MM)</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="05:45"
+                  value={customStart}
+                  onChange={(ev) => setCustomStart(ev.target.value)}
+                  style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+                />
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>שעת סיום (HH:MM)</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="14:00"
+                  value={customEnd}
+                  onChange={(ev) => setCustomEnd(ev.target.value)}
+                  style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+                />
+              </div>
+              <button
+                className="btn sm"
+                style={{ marginBottom: 1 }}
+                disabled={!isValidTime(customStart) || !isValidTime(customEnd)}
+                onClick={() => setInstanceTime(instanceId, normalizeTime(customStart), normalizeTime(customEnd))}
+              >
+                עדכן שעות
+              </button>
             </div>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>שעת סיום</label>
-              <input
-                type="time"
-                value={customEnd}
-                onChange={(ev) => {
-                  if (ev.target.value) setCustomEnd(ev.target.value);
-                }}
-              />
-            </div>
-            <button
-              className="btn sm"
-              style={{ marginBottom: 1 }}
-              onClick={() => customStart && customEnd && setInstanceTime(instanceId, customStart, customEnd)}
-            >
-              עדכן שעות
-            </button>
-          </div>
+            {(customStart && !isValidTime(customStart)) || (customEnd && !isValidTime(customEnd)) ? (
+              <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4 }}>
+                יש להזין שעה בפורמט 24 שעות, לדוגמה 05:45 או 22:00
+              </div>
+            ) : null}
+          </>
         )}
       </div>
 
