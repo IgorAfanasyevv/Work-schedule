@@ -179,16 +179,8 @@ table.sched th .day-date{
 }
 table.sched td{padding:3px;border-bottom:1px solid var(--border-soft);border-left:1px solid var(--border-soft);vertical-align:top;}
 table.sched td:first-child, table.sched th:first-child{border-left:none;}
-.rowlabel{font-weight:700;font-size:12.5px;color:var(--text);white-space:nowrap;padding:8px 10px !important;background:var(--panel);border-right:4px solid var(--border);}
-.rowlabel .sub{display:block;font-size:11px;color:var(--text-faint);font-weight:400;font-family:'IBM Plex Mono';margin-top:2px;}
-.rowlabel.cat-morning{border-right-color:var(--amber);background:linear-gradient(90deg, rgba(240,169,78,.14), transparent 65%), var(--panel);}
-.rowlabel.cat-morning .name{color:var(--amber);}
-.rowlabel.cat-afternoon{border-right-color:var(--teal);background:linear-gradient(90deg, rgba(79,209,197,.14), transparent 65%), var(--panel);}
-.rowlabel.cat-afternoon .name{color:var(--teal);}
-.rowlabel.cat-night{border-right-color:var(--violet);background:linear-gradient(90deg, rgba(199,146,234,.14), transparent 65%), var(--panel);}
-.rowlabel.cat-night .name{color:var(--violet);}
-.rowlabel.cat-other{border-right-color:var(--blue);background:linear-gradient(90deg, rgba(107,138,253,.14), transparent 65%), var(--panel);}
-.rowlabel.cat-other .name{color:var(--blue);}
+.rowlabel{font-weight:700;font-size:12.5px;color:var(--text);white-space:nowrap;padding:8px 10px !important;background:var(--panel);}
+.rowlabel .sub{display:block;font-size:13px;color:var(--teal);font-weight:700;font-family:'IBM Plex Mono';margin-top:3px;letter-spacing:.01em;}
 
 .shift-cell{
   border-radius:7px;padding:5px 8px;font-size:11.5px;cursor:pointer;transition:.12s;border:1px solid var(--border);

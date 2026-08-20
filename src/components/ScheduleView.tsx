@@ -327,12 +327,10 @@ function TableView() {
             const st = shiftTypes.find((s) => s.id === stId);
             const sample = instances.find((i) => i.shiftTypeId === stId);
             const label = st ? st.name : sample?.name ?? '';
-            const category = st?.category ?? sample?.category;
-            const catClass = category === 'morning' ? 'cat-morning' : category === 'afternoon' ? 'cat-afternoon' : category === 'night' ? 'cat-night' : 'cat-other';
             return (
               <tr key={stId}>
-                <td className={`rowlabel ${catClass}`}>
-                  <span className="name">{label}</span>
+                <td className="rowlabel">
+                  {label}
                   <span className="sub">{sample ? `${sample.start}–${sample.end}` : ''}</span>
                 </td>
                 {DAY_NAMES.map((_, d) => (
