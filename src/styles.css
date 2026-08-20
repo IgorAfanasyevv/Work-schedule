@@ -177,7 +177,7 @@ table.sched th .day-date{
   font-family:'IBM Plex Mono',monospace;letter-spacing:.02em;background:rgba(79,209,197,.12);
   border-radius:5px;padding:1px 6px;display:inline-block;
 }
-table.sched td{padding:2px;border-bottom:1px solid var(--border-soft);border-left:1px solid var(--border-soft);vertical-align:top;}
+table.sched td{padding:1px;border-bottom:none;border-left:none;vertical-align:top;}
 
 .covered-tag{
   font-size:11px;font-weight:800;color:var(--teal);background:rgba(79,209,197,.12);
