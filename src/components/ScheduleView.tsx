@@ -9,6 +9,7 @@ import { dateForDayIndex, formatDDMM, yearOfWeek } from '../dateUtils';
 export default function ScheduleView() {
   const {
     state,
+    instances,
     calendarView,
     setCalendarView,
     openModal,
@@ -163,77 +164,122 @@ function statusClass(status: ReturnType<typeof instanceStatus>): string {
   return 'st-filled';
 }
 
-/**
- * One table cell for a (day, shift-type) pair, spreadsheet-style: every assignment is a single
- * plain text line (no bordered "card"), grouped together in one cell instead of stacked separate
- * boxes - a slot with 2 people just adds a second line. Time isn't repeated here since the row
- * label already shows it once for the whole row.
- */
-function CompactSlotCell({ day, stId, instances }: { day: number; stId: string; instances: ShiftInstance[] }) {
-  const { state, openModal, setAssignMode, duplicateInstance, deleteInstance } = useScheduler();
-  const allMatches = instances.filter((i) => i.day === day && i.shiftTypeId === stId);
-  const visible = allMatches.filter((i) => isAssigned(i) || !isSlotCovered(instances, i));
+function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showDelete?: boolean; slotLabel?: string }) {
+  const { state, openModal, setAssignMode, deleteInstance } = useScheduler();
+  const status = instanceStatus(inst);
+  const label = assigneeLabel(inst, state.employees);
 
-  if (allMatches.length > 0 && visible.length === 0) {
-    // every slot here is redundant - covered by a long (12h+) shift elsewhere that day - mark it
-    // instead of leaving totally blank space with no explanation
-    return (
-      <td className="compact-cell">
-        <div className="cell-covered-tag" title="מכוסה על ידי משמרת ארוכה של 12 שעות באותו יום">
-          12 שעות ✓
+  return (
+    <div
+      className={`shift-cell ${statusClass(status)}`}
+      style={{ marginBottom: 3 }}
+      onClick={() => {
+        setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
+        openModal({ type: 'shiftDetail', instanceId: inst.id });
+      }}
+    >
+      <div className="time mono">
+        {inst.start}–{inst.end}
+      </div>
+      <div className="cell-badges">
+        {slotLabel && <span className="mini-badge b-violet-tint">{slotLabel}</span>}
+        {inst.durationHours >= 11.5 && (
+          <span className="mini-badge b-amber-tint" title="משמרת של 12 שעות">
+            12 שעות
+          </span>
+        )}
+      </div>
+      {label ? (
+        <div className="who">
+          {label}
+          {inst.tempWorkerName && (
+            <span className="badge b-violet" style={{ padding: '1px 6px', marginRight: 6 }}>
+              מתגבר
+            </span>
+          )}
         </div>
-      </td>
+      ) : (
+        <div className="empty-msg">⛔ לא מאוישת</div>
+      )}
+      {inst.exception && (
+        <div className="cell-icons">
+          <span className="mini-dot" style={{ background: 'var(--amber)' }} title="חריגה" />
+        </div>
+      )}
+      {showDelete && (
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            if (confirm('להסיר את התא הנוסף הזה?')) deleteInstance(inst.id);
+          }}
+          title="הסר תא זה"
+          style={{
+            position: 'absolute',
+            bottom: 3,
+            left: 3,
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-faint)',
+            fontSize: 10,
+            padding: 1,
+            cursor: 'pointer',
+          }}
+        >
+          🗑
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DaySlotCell({ day, stId, instances }: { day: number; stId: string; instances: ShiftInstance[] }) {
+  const { duplicateInstance } = useScheduler();
+  const allMatches = instances.filter((i) => i.day === day && i.shiftTypeId === stId);
+  // hide any slot that's unassigned AND already redundant (fully covered - alone or jointly with
+  // other assigned shifts that day) instead of showing it as an empty "not staffed" card
+  const matches = allMatches.filter((i) => isAssigned(i) || !isSlotCovered(instances, i));
+
+  if (allMatches.length > 0 && matches.length === 0) {
+    // every slot in this row is covered - by a long (12h+) shift elsewhere that day - mark it
+    // with a small "12" instead of leaving totally blank space with no explanation
+    return (
+      <div className="covered-tag" title="מכוסה על ידי משמרת ארוכה של 12 שעות באותו יום">
+        12
+      </div>
     );
   }
 
   return (
-    <td className="compact-cell">
-      {visible.map((inst, idx) => {
-        const status = instanceStatus(inst);
-        const label = assigneeLabel(inst, state.employees);
-        return (
-          <div
-            key={inst.id}
-            className={`cell-line ${label ? statusClass(status) : 'st-empty'}`}
-            onClick={() => {
-              setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
-              openModal({ type: 'shiftDetail', instanceId: inst.id });
-            }}
-          >
-            {idx > 0 && <span className="cell-line-tag">2</span>}
-            <span className="cell-line-text">{label || 'לא מאוישת'}</span>
-            {inst.tempWorkerName && <span className="cell-line-tag violet">מתגבר</span>}
-            {inst.durationHours >= 11.5 && (
-              <span className="cell-line-tag amber" title="משמרת של 12 שעות">
-                12ש
-              </span>
-            )}
-            {inst.exception && <span className="mini-dot" style={{ background: 'var(--amber)' }} title="חריגה" />}
-            {visible.length > 1 && (
-              <button
-                className="cell-line-del"
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  if (confirm('להסיר את התא הנוסף הזה?')) deleteInstance(inst.id);
-                }}
-                title="הסר תא זה"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        );
-      })}
+    <div style={{ position: 'relative' }}>
+      {matches.map((inst, idx) => (
+        <ShiftCell
+          inst={inst}
+          key={inst.id}
+          showDelete={matches.length > 1}
+          slotLabel={idx > 0 ? `קנה ${idx + 1}` : undefined}
+        />
+      ))}
       <button
         type="button"
-        className="cell-add-btn"
-        onClick={() => duplicateInstance(visible[0]?.id ?? allMatches[allMatches.length - 1]?.id)}
-        disabled={visible.length === 0}
+        onClick={() => duplicateInstance(matches[0]?.id ?? allMatches[allMatches.length - 1]?.id)}
         title="הוסף תא נוסף לאותה משמרת (לחגים/סופ״ש עם שני עובדים)"
+        disabled={matches.length === 0}
+        style={{
+          width: '100%',
+          background: 'none',
+          border: '1px dashed var(--border-soft)',
+          borderRadius: 6,
+          color: 'var(--text-faint)',
+          fontSize: 9.5,
+          padding: '2px 0',
+          cursor: matches.length === 0 ? 'default' : 'pointer',
+          opacity: matches.length === 0 ? 0.4 : 1,
+        }}
       >
-        + עובד שני
+        + הוסף עובד שני
       </button>
-    </td>
+    </div>
   );
 }
 
@@ -257,7 +303,7 @@ function TableView() {
 
   return (
     <div className="table-wrap">
-      <table className="sched compact">
+      <table className="sched">
         <thead>
           <tr>
             <th style={{ textAlign: 'right' }}>משמרת</th>
@@ -281,7 +327,9 @@ function TableView() {
                   <span className="sub">{sample ? `${sample.start}–${sample.end}` : ''}</span>
                 </td>
                 {DAY_NAMES.map((_, d) => (
-                  <CompactSlotCell key={d} day={d} stId={stId} instances={instances} />
+                  <td key={d}>
+                    <DaySlotCell day={d} stId={stId} instances={instances} />
+                  </td>
                 ))}
               </tr>
             );
