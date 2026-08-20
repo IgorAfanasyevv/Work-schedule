@@ -192,9 +192,12 @@ table.sched td:first-child, table.sched th:first-child{border-left:none;}
   background:var(--panel-2);min-height:38px;display:flex;flex-direction:column;gap:2px;position:relative;
 }
 .shift-cell:hover{border-color:var(--teal);transform:translateY(-1px);}
-.shift-cell .time{font-family:'IBM Plex Mono';font-size:10.5px;font-weight:700;color:var(--text);letter-spacing:.01em;unicode-bidi:isolate;direction:ltr;text-align:right;}
-.shift-cell .cell-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;}
-.shift-cell .mini-badge{font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;unicode-bidi:isolate;}
+.shift-cell .time{
+  font-family:'IBM Plex Mono';font-size:10.5px;font-weight:700;color:var(--text);letter-spacing:.01em;
+  display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+}
+.shift-cell .time > .time-digits{unicode-bidi:isolate;direction:ltr;}
+.shift-cell .mini-badge{font-size:8.5px;font-weight:700;border-radius:4px;padding:1px 5px;unicode-bidi:isolate;flex:none;}
 .shift-cell .mini-badge.b-violet-tint{color:var(--violet);background:rgba(199,146,234,.16);}
 .shift-cell .mini-badge.b-amber-tint{color:var(--amber);background:rgba(240,169,78,.16);}
 .shift-cell .who{font-weight:700;font-size:13px;color:var(--text-strong);letter-spacing:.005em;}

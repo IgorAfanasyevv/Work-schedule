@@ -179,13 +179,13 @@ function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showD
       }}
     >
       <div className="time mono">
-        {inst.start}–{inst.end}
-      </div>
-      <div className="cell-badges">
+        <span className="time-digits">
+          {inst.start}–{inst.end}
+        </span>
         {slotLabel && <span className="mini-badge b-violet-tint">{slotLabel}</span>}
         {inst.durationHours >= 11.5 && (
           <span className="mini-badge b-amber-tint" title="משמרת של 12 שעות">
-            12 שעות
+            12ש
           </span>
         )}
       </div>
