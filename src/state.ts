@@ -90,8 +90,11 @@ function flushLocalSite(siteId: string) {
 
 export function saveLocalState(state: AppState, siteId: string) {
   pendingLocal[siteId] = state;
-  if (localSaveTimers[siteId]) clearTimeout(localSaveTimers[siteId]);
-  localSaveTimers[siteId] = setTimeout(() => flushLocalSite(siteId), 250);
+  // no debounce delay: every save in this app already happens after a single discrete user
+  // action (a click, a modal submit), never on every keystroke, so there's nothing to batch -
+  // and any delay here is pure risk of losing the change if the page is refreshed/closed before
+  // the timer fires
+  flushLocalSite(siteId);
 }
 
 /* ------------------------------------------------------------------ */
@@ -139,8 +142,11 @@ function flushRemoteSite(siteId: string) {
 export function saveRemoteState(state: AppState, siteId: string) {
   if (!db) return;
   pendingRemote[siteId] = state;
-  if (remoteSaveTimers[siteId]) clearTimeout(remoteSaveTimers[siteId]);
-  remoteSaveTimers[siteId] = setTimeout(() => flushRemoteSite(siteId), 400);
+  // same reasoning as saveLocalState: fire immediately rather than debouncing, since a delayed
+  // write is a delayed write that a quick refresh can catch mid-flight and lose - async network
+  // writes can't be reliably completed during page unload, so minimizing how long a write sits
+  // unsent is the real mitigation, not a bigger safety net after the fact
+  flushRemoteSite(siteId);
 }
 
 /** subscribe to live changes for one site (from any tab/user); returns an unsubscribe function */
