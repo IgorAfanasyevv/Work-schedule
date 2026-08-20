@@ -26,6 +26,7 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
   const {
     state,
     instances,
+    carryOverFromPreviousWeek,
     assignMode,
     setAssignMode,
     assignEmployee,
@@ -77,7 +78,7 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
       return;
     }
     const e = state.employees.find((x) => x.id === inst!.employeeId)!;
-    setExplainText(explain(e, inst!, instances, state.weekStartDate));
+    setExplainText(explain(e, inst!, instances, state.weekStartDate, carryOverFromPreviousWeek));
   }
 
   return (

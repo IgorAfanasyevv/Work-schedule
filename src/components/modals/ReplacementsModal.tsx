@@ -5,13 +5,14 @@ import { findReplacements, findTwelveHourChains, getEligibility } from '../../en
 import { DAY_NAMES, REASON_LABELS } from '../../types';
 
 export default function ReplacementsModal({ instanceId }: { instanceId: string }) {
-  const { state, instances, applyReplacementOption, applyTwelveHourChain, assignTemp, closeModal } = useScheduler();
+  const { state, instances, carryOverFromPreviousWeek, applyReplacementOption, applyTwelveHourChain, assignTemp, closeModal } =
+    useScheduler();
   const inst = instances.find((i) => i.id === instanceId);
   const [tempName, setTempName] = useState('');
 
   const options = useMemo(
-    () => (inst ? findReplacements(instanceId, instances, state.employees, state.weekStartDate, 3) : []),
-    [inst, instanceId, instances, state.employees]
+    () => (inst ? findReplacements(instanceId, instances, state.employees, state.weekStartDate, 3, carryOverFromPreviousWeek) : []),
+    [inst, instanceId, instances, state.employees, carryOverFromPreviousWeek]
   );
 
   const twelveHourOptions = useMemo(
@@ -22,9 +23,9 @@ export default function ReplacementsModal({ instanceId }: { instanceId: string }
   const ineligible = useMemo(() => {
     if (!inst) return [];
     return state.employees
-      .map((e) => ({ e, elig: getEligibility(e, inst, instances, state.weekStartDate, instanceId) }))
+      .map((e) => ({ e, elig: getEligibility(e, inst, instances, state.weekStartDate, instanceId, 'maxShifts', carryOverFromPreviousWeek) }))
       .filter((x) => !x.elig.eligible);
-  }, [inst, instanceId, state.employees, instances]);
+  }, [inst, instanceId, state.employees, instances, carryOverFromPreviousWeek]);
 
   if (!inst) return null;
 

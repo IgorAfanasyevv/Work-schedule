@@ -44,6 +44,23 @@ export function overlaps(a: [number, number], b: [number, number]): boolean {
   return a[0] < b[1] && b[0] < a[1];
 }
 
+/** minimum rest required between the end of one shift and the start of the next, in hours -
+ *  a person can't be scheduled back-to-back with only a token gap (e.g. finishing a night shift
+ *  at 06:00 and starting another at 07:00 is not physically reasonable, even though it doesn't
+ *  literally overlap in minutes). Set just below the default shift set's own night-end-to-
+ *  afternoon-start gap (21:45–06:00 night, then 13:45 afternoon start = 7h45m) so that normal,
+ *  already-expected same-day handover keeps working, while still catching anything meaningfully
+ *  tighter than that. */
+export const MIN_REST_HOURS = 7;
+
+/** true if two shifts either overlap outright, or don't leave the minimum required rest gap
+ *  between them */
+export function conflictsWithRestRequirement(a: [number, number], b: [number, number]): boolean {
+  if (overlaps(a, b)) return true;
+  const gapMinutes = a[0] >= b[1] ? a[0] - b[1] : b[0] - a[1];
+  return gapMinutes < MIN_REST_HOURS * 60;
+}
+
 /* ---------------------------------------------------------------------- */
 /*  ids / instance factory                                                */
 /* ---------------------------------------------------------------------- */
@@ -163,7 +180,16 @@ export function getEligibility(
   instances: ShiftInstance[],
   weekStartDate: string,
   ignoreInstanceId?: string | null,
-  capField: 'maxShifts' | 'desiredShifts' = 'maxShifts'
+  capField: 'maxShifts' | 'desiredShifts' = 'maxShifts',
+  /**
+   * Instances from the PREVIOUS week's Saturday (already re-tagged to day=-1 by the caller) that
+   * could still conflict with this week's Sunday shifts - e.g. a Saturday-night shift ending
+   * Sunday morning, too close to a Sunday-morning shift to leave proper rest. Weeks are stored
+   * completely independently, so without this the engine has no way to know someone was working
+   * until 6/7am Sunday if that shift lives in last week's data. Only ever used for the
+   * overlap/rest check - never counted toward this week's shift/night quotas.
+   */
+  carryOverFromPreviousWeek: ShiftInstance[] = []
 ): Eligibility {
   const reasons: Eligibility['reasons'] = [];
 
@@ -173,8 +199,12 @@ export function getEligibility(
     (i) => i.employeeId === employee.id && i.id !== instance.id && i.id !== ignoreInstanceId
   );
   const rangeA = shiftAbsRange(instance.day, instance.start, instance.end);
-  const conflicts = mine.filter((i) => overlaps(rangeA, shiftAbsRange(i.day, i.start, i.end)));
-  if (conflicts.length) reasons.push({ type: 'overlap', conflicts });
+  const conflicts = mine.filter((i) => conflictsWithRestRequirement(rangeA, shiftAbsRange(i.day, i.start, i.end)));
+  const carryOverConflicts = carryOverFromPreviousWeek.filter(
+    (i) => i.employeeId === employee.id && conflictsWithRestRequirement(rangeA, shiftAbsRange(i.day, i.start, i.end))
+  );
+  const allConflicts = [...conflicts, ...carryOverConflicts];
+  if (allConflicts.length) reasons.push({ type: 'overlap', conflicts: allConflicts });
 
   // A person can't work two shifts that both START on the same calendar day — e.g. a morning
   // shift followed by a night shift starting later that same day. This is stricter than pure
@@ -292,7 +322,21 @@ export function pickAmongBest<T>(scored: { item: T; score: number }[]): T {
 /*  full generation (Constraint Satisfaction, MRV heuristic + fairness)   */
 /* ---------------------------------------------------------------------- */
 
-export function generateFullSchedule(employees: Employee[], template: ShiftInstance[], weekStartDate: string): ShiftInstance[] {
+/** builds the "day -1" carry-over set from the PREVIOUS week's raw instances - only Saturday
+ *  night shifts matter, since that's the only case that can bleed into the following week's
+ *  Sunday (a night shift on any other day of the week ends within that same week). */
+export function buildCarryOverFromPreviousWeek(previousWeekInstances: ShiftInstance[]): ShiftInstance[] {
+  return previousWeekInstances
+    .filter((i) => i.day === 6 && i.category === 'night' && i.employeeId)
+    .map((i) => ({ ...i, day: -1 }));
+}
+
+export function generateFullSchedule(
+  employees: Employee[],
+  template: ShiftInstance[],
+  weekStartDate: string,
+  carryOverFromPreviousWeek: ShiftInstance[] = []
+): ShiftInstance[] {
   const instances: ShiftInstance[] = template.map((i) => ({
     ...i,
     employeeId: null,
@@ -308,7 +352,9 @@ export function generateFullSchedule(employees: Employee[], template: ShiftInsta
 
     for (const id of remaining) {
       const inst = instances.find((i) => i.id === id)!;
-      const elig = employees.filter((e) => getEligibility(e, inst, instances, weekStartDate, null, 'desiredShifts').eligible);
+      const elig = employees.filter(
+        (e) => getEligibility(e, inst, instances, weekStartDate, null, 'desiredShifts', carryOverFromPreviousWeek).eligible
+      );
       if (bestList === null || elig.length < bestList.length) {
         bestId = id;
         bestList = elig;
@@ -339,14 +385,15 @@ export function findReplacements(
   instances: ShiftInstance[],
   employees: Employee[],
   weekStartDate: string,
-  maxOptions = 3
+  maxOptions = 3,
+  carryOverFromPreviousWeek: ShiftInstance[] = []
 ): ReplacementOption[] {
   const vacant = instances.find((i) => i.id === instanceId);
   if (!vacant) return [];
   const options: ReplacementOption[] = [];
 
   const direct = employees
-    .map((e) => ({ e, elig: getEligibility(e, vacant, instances, weekStartDate) }))
+    .map((e) => ({ e, elig: getEligibility(e, vacant, instances, weekStartDate, null, 'maxShifts', carryOverFromPreviousWeek) }))
     .filter((x) => x.elig.eligible)
     .map((x) => ({ e: x.e, score: fairnessScore(x.e, vacant, instances, employees) }))
     .sort((a, b) => a.score - b.score);
@@ -357,7 +404,7 @@ export function findReplacements(
 
   if (options.length < maxOptions) {
     const blockedBySingleConflict = employees
-      .map((e) => ({ e, elig: getEligibility(e, vacant, instances, weekStartDate) }))
+      .map((e) => ({ e, elig: getEligibility(e, vacant, instances, weekStartDate, null, 'maxShifts', carryOverFromPreviousWeek) }))
       .filter(
         (x) =>
           !x.elig.eligible &&
@@ -366,14 +413,17 @@ export function findReplacements(
       );
 
     blockedBySingleConflict.forEach(({ e, elig }) => {
-      const conflictInstances = elig.reasons[0].conflicts || [];
+      // only REAL instances from this week can actually be reassigned through this chain - a
+      // carry-over conflict from last week's Saturday night has nothing here to reassign
+      const conflictInstances = (elig.reasons[0].conflicts || []).filter((c) => instances.some((x) => x.id === c.id));
+      if (conflictInstances.length === 0) return;
       const subChanges: { instanceId: string; toEmployeeId: string }[] = [];
       let allResolved = true;
 
       for (const c of conflictInstances) {
         const cands = employees
           .filter((a) => a.id !== e.id)
-          .map((a) => ({ a, elig2: getEligibility(a, c, instances, weekStartDate, c.id) }))
+          .map((a) => ({ a, elig2: getEligibility(a, c, instances, weekStartDate, c.id, 'maxShifts', carryOverFromPreviousWeek) }))
           .filter((x) => x.elig2.eligible)
           .map((x) => ({ a: x.a, score: fairnessScore(x.a, c, instances, employees) }))
           .sort((x, y) => x.score - y.score);
@@ -476,8 +526,14 @@ export function findTwelveHourChains(
 /*  decision explanation (section 32 of the spec)                         */
 /* ---------------------------------------------------------------------- */
 
-export function explain(employee: Employee, instance: ShiftInstance, instances: ShiftInstance[], weekStartDate: string): string {
-  const elig = getEligibility(employee, instance, instances, weekStartDate, instance.id);
+export function explain(
+  employee: Employee,
+  instance: ShiftInstance,
+  instances: ShiftInstance[],
+  weekStartDate: string,
+  carryOverFromPreviousWeek: ShiftInstance[] = []
+): string {
+  const elig = getEligibility(employee, instance, instances, weekStartDate, instance.id, 'maxShifts', carryOverFromPreviousWeek);
   if (elig.eligible) return `${employee.name} זמין וכשיר לשיבוץ במשמרת זו ללא הפרת אילוצים.`;
 
   const parts = elig.reasons.map((r) => {

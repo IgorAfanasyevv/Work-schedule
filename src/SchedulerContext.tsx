@@ -12,6 +12,7 @@ import { REASON_LABELS, DAY_NAMES } from './types';
 import {
   addHoursToTime,
   assigneeLabel,
+  buildCarryOverFromPreviousWeek,
   durationHours,
   findReplacements,
   findTwelveHourChains,
@@ -48,6 +49,10 @@ interface Ctx {
   state: AppState;
   /** the current week's shift schedule only — derived from state.weeks[state.weekStartDate] */
   instances: ShiftInstance[];
+  /** Saturday-night shifts from the previous week (re-tagged to day=-1) that can still conflict
+   *  with this week's Sunday - pass into getEligibility/generateFullSchedule/findReplacements
+   *  calls made outside the context so cross-week conflicts aren't missed */
+  carryOverFromPreviousWeek: ShiftInstance[];
   sites: { id: string; name: string }[];
   currentSiteId: string;
   switchSite: (siteId: string) => void;
@@ -133,6 +138,16 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
   // site without needing currentSiteId in every single callback's dependency array
   const siteIdRef = React.useRef(currentSiteId);
   siteIdRef.current = currentSiteId;
+
+  // Saturday-night shifts from the week right before this one can still be running into this
+  // week's Sunday morning - since every week's data is fully independent, this is the only way
+  // the engine finds out about that when checking/generating THIS week.
+  const carryOverFromPreviousWeek = useMemo(() => {
+    const prevWeekKey = addDaysISO(state.weekStartDate, -7);
+    const prevWeekInstances = state.weeks[prevWeekKey];
+    if (!prevWeekInstances) return [];
+    return buildCarryOverFromPreviousWeek(prevWeekInstances);
+  }, [state.weeks, state.weekStartDate]);
 
   const switchSite = useCallback((siteId: string) => {
     if (siteId === siteIdRef.current) return;
@@ -244,7 +259,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     // deferred so React can paint the "generating..." state before the (synchronous) computation runs
     setTimeout(() => {
       setState((s) => {
-        const generated = generateFullSchedule(s.employees, currentInstances(s), s.weekStartDate);
+        const generated = generateFullSchedule(s.employees, currentInstances(s), s.weekStartDate, carryOverFromPreviousWeek);
         const unfilled = generated.filter((i) => !i.employeeId && !i.tempWorkerName).length;
         const text =
           unfilled > 0
@@ -257,7 +272,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       });
       setIsGenerating(false);
     }, 20);
-  }, [withAudit, toast]);
+  }, [withAudit, toast, carryOverFromPreviousWeek]);
 
   const localRecalc = useCallback(() => {
     setIsGenerating(true);
@@ -286,7 +301,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
               changed++;
               continue;
             }
-            const elig = getEligibility(e, inst, instances, s.weekStartDate, inst.id);
+            const elig = getEligibility(e, inst, instances, s.weekStartDate, inst.id, 'maxShifts', carryOverFromPreviousWeek);
             if (!elig.eligible) {
               instances[i] = { ...inst, employeeId: null };
               changed++;
@@ -309,7 +324,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       });
       setIsGenerating(false);
     }, 20);
-  }, [withAudit, toast]);
+  }, [withAudit, toast, carryOverFromPreviousWeek]);
 
   const navigateWeek = useCallback((direction: -1 | 1) => {
     setState((s) => {
@@ -387,7 +402,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
       if (employeeId) {
         const e = state.employees.find((x) => x.id === employeeId)!;
-        const elig = getEligibility(e, inst, weekInstances, state.weekStartDate, inst.id);
+        const elig = getEligibility(e, inst, weekInstances, state.weekStartDate, inst.id, 'maxShifts', carryOverFromPreviousWeek);
         if (!elig.eligible && !opts?.force) {
           return { ok: false, reasons: elig.reasons.map((r) => REASON_LABELS[r.type]) };
         }
@@ -426,7 +441,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       toast('השיבוץ נשמר');
       return { ok: true };
     },
-    [state, withAudit, toast, empName]
+    [state, withAudit, toast, empName, carryOverFromPreviousWeek]
   );
 
   const assignTemp = useCallback(
@@ -510,7 +525,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
 
   const applyReplacementOption = useCallback(
     (instanceId: string, optionIndex: number) => {
-      const options = findReplacements(instanceId, currentInstances(state), state.employees, state.weekStartDate, 3);
+      const options = findReplacements(instanceId, currentInstances(state), state.employees, state.weekStartDate, 3, carryOverFromPreviousWeek);
       const opt = options[optionIndex];
       if (!opt) return;
       setState((s) => {
@@ -532,7 +547,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       });
       toast(`ההחלפה בוצעה (${opt.changeCount} שינוי${opt.changeCount > 1 ? 'ים' : ''})`);
     },
-    [state, empName, withAudit, toast]
+    [state, empName, withAudit, toast, carryOverFromPreviousWeek]
   );
 
   /**
@@ -916,6 +931,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     () => ({
       state,
       instances: currentInstances(state),
+      carryOverFromPreviousWeek,
       sites: SITES,
       currentSiteId,
       switchSite,
@@ -968,6 +984,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       state,
+      carryOverFromPreviousWeek,
       currentSiteId,
       switchSite,
       tab,
