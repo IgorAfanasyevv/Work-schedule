@@ -75,6 +75,7 @@ interface Ctx {
   fullGenerate: () => void;
   localRecalc: () => void;
   clearSchedule: () => void;
+  cleanupExtraWeekendNightSlots: () => void;
   clearWeekPreferences: () => void;
 
   assignEmployee: (instanceId: string, employeeId: string | null, opts?: { force?: boolean }) => { ok: boolean; reasons?: string[] };
@@ -358,6 +359,45 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
     toast('הסידור של השבוע הנוכחי נוקה — כל המשמרות ריקות כעת (העדפות ושבועות אחרים לא נגעו)');
+  }, [withAudit, toast]);
+
+  /**
+   * Removes extra Friday/Saturday NIGHT-category slots beyond the first one for each shift type,
+   * for the currently-viewed week only. Needed because a week that was already created (seeded)
+   * before the "don't double night on weekends" rule existed keeps whatever slots it was given at
+   * the time - fixing the rule going forward doesn't retroactively clean up weeks that already
+   * exist. This is a manual one-click fix for exactly that leftover situation (including any
+   * assigned employee on the extra slot, which just gets freed up along with the slot itself).
+   */
+  const cleanupExtraWeekendNightSlots = useCallback(() => {
+    setState((s) => {
+      const week = currentInstances(s);
+      const seen = new Set<string>();
+      const kept: ShiftInstance[] = [];
+      let removed = 0;
+      for (const inst of week) {
+        const isWeekendNight = inst.category === 'night' && (inst.day === 5 || inst.day === 6);
+        if (!isWeekendNight) {
+          kept.push(inst);
+          continue;
+        }
+        const key = `${inst.day}-${inst.shiftTypeId}`;
+        if (seen.has(key)) {
+          removed++;
+          continue;
+        }
+        seen.add(key);
+        kept.push(inst);
+      }
+      if (removed === 0) return s;
+      const next = withAudit(
+        withCurrentInstances(s, kept),
+        `נוקו ${removed} משמרות לילה כפולות מיותרות בסוף השבוע (שישי/שבת) בשבוע ${s.weekStartDate}.`
+      );
+      saveState(next, siteIdRef.current);
+      return next;
+    });
+    toast('משמרות הלילה הכפולות המיותרות בסוף השבוע הוסרו');
   }, [withAudit, toast]);
 
   /** clears only THIS week's day/shift preferences (set from the availability grid) for every
@@ -942,6 +982,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       fullGenerate,
       localRecalc,
       clearSchedule,
+      cleanupExtraWeekendNightSlots,
       clearWeekPreferences,
       assignEmployee,
       assignTemp,
@@ -988,6 +1029,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       fullGenerate,
       localRecalc,
       clearSchedule,
+      cleanupExtraWeekendNightSlots,
       clearWeekPreferences,
       assignEmployee,
       assignTemp,

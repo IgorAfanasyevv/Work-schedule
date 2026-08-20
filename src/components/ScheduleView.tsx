@@ -9,6 +9,7 @@ import { dateForDayIndex, formatDDMM, yearOfWeek } from '../dateUtils';
 export default function ScheduleView() {
   const {
     state,
+    instances,
     calendarView,
     setCalendarView,
     openModal,
@@ -17,7 +18,20 @@ export default function ScheduleView() {
     goToCurrentWeek,
     goToDate,
     clearSchedule,
+    cleanupExtraWeekendNightSlots,
   } = useScheduler();
+
+  const extraNightSlots = (() => {
+    const seen = new Set<string>();
+    let extra = 0;
+    for (const i of instances) {
+      if (i.category !== 'night' || (i.day !== 5 && i.day !== 6)) continue;
+      const key = `${i.day}-${i.shiftTypeId}`;
+      if (seen.has(key)) extra++;
+      else seen.add(key);
+    }
+    return extra;
+  })();
 
   return (
     <>
@@ -123,7 +137,21 @@ export default function ScheduleView() {
       </div>
       {calendarView ? <CalendarView /> : <TableView />}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+        {extraNightSlots > 0 && (
+          <button
+            className="btn sm"
+            style={{ borderColor: 'var(--violet)', color: 'var(--violet)' }}
+            title="מסיר תאי לילה כפולים מיותרים בשישי/שבת שנוצרו לפני שהחוק עודכן - נשאר תא אחד לכל סוג משמרת לילה, כמו בימי חול"
+            onClick={() => {
+              if (confirm(`להסיר ${extraNightSlots} תאי לילה כפולים מיותרים בשישי/שבת בשבוע זה?`)) {
+                cleanupExtraWeekendNightSlots();
+              }
+            }}
+          >
+            🧹 נקה {extraNightSlots} תאי לילה כפולים מיותרים
+          </button>
+        )}
         <button
           className="btn danger sm"
           title="מנקה רק מי משובץ לאיזו משמרת. לא נוגע להעדפות/חסימות של העובדים."
