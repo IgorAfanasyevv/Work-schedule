@@ -282,55 +282,46 @@ function TableView() {
   const { state, instances } = useScheduler();
   const { shiftTypes, weekStartDate } = state;
 
-  const rowKeys: string[] = [];
-  const seen = new Set<string>();
-  instances.forEach((i) => {
-    if (!seen.has(i.shiftTypeId)) {
-      seen.add(i.shiftTypeId);
-      rowKeys.push(i.shiftTypeId);
-    }
-  });
-  rowKeys.sort((a, b) => {
-    const ia = shiftTypes.findIndex((s) => s.id === a);
-    const ib = shiftTypes.findIndex((s) => s.id === b);
-    return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
-  });
-
   return (
     <div className="table-wrap">
-      <table className="sched">
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'right' }}>משמרת</th>
-            {DAY_NAMES.map((d, i) => (
-              <th key={d} className={i === 5 || i === 6 ? 'weekend-col' : ''}>
-                {d}
-                <span className="day-date">{formatDDMM(dateForDayIndex(weekStartDate, i))}</span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rowKeys.map((stId) => {
-            const st = shiftTypes.find((s) => s.id === stId);
-            const sample = instances.find((i) => i.shiftTypeId === stId);
-            const label = st ? st.name : sample?.name ?? '';
-            return (
-              <tr key={stId}>
-                <td className="rowlabel">
-                  {label}
-                  <span className="sub">{sample ? `${sample.start}–${sample.end}` : ''}</span>
-                </td>
-                {DAY_NAMES.map((_, d) => (
-                  <td key={d}>
+      <div className="day-columns">
+        {DAY_NAMES.map((dayName, d) => {
+          // every distinct shift-type present this day, keeping only ones that still have at
+          // least one visible (assigned or genuinely-needed) slot, sorted by start time so the
+          // column reads top-to-bottom in chronological order with nothing wasted in between
+          const stIdsToday = Array.from(new Set(instances.filter((i) => i.day === d).map((i) => i.shiftTypeId)));
+          const rows = stIdsToday
+            .map((stId) => {
+              const matches = instances.filter((i) => i.day === d && i.shiftTypeId === stId);
+              const visible = matches.filter((i) => isAssigned(i) || !isSlotCovered(instances, i));
+              return { stId, visible, sortKey: matches.length ? toMinutes(matches[0].start) : 0 };
+            })
+            .filter((r) => r.visible.length > 0)
+            .sort((a, b) => a.sortKey - b.sortKey);
+
+          const isWeekend = d === 5 || d === 6;
+          return (
+            <div className={`day-column ${isWeekend ? 'weekend-col' : ''}`} key={d}>
+              <div className="day-col-header">
+                {dayName}
+                <span className="day-date">{formatDDMM(dateForDayIndex(weekStartDate, d))}</span>
+              </div>
+              {rows.map(({ stId }) => {
+                const st = shiftTypes.find((s) => s.id === stId);
+                const sample = instances.find((i) => i.day === d && i.shiftTypeId === stId);
+                const label = st ? st.name : sample?.name ?? '';
+                return (
+                  <div className="day-col-row" key={stId}>
+                    <div className="day-col-row-label">{label}</div>
                     <DaySlotCell day={d} stId={stId} instances={instances} />
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  </div>
+                );
+              })}
+              {rows.length === 0 && <div className="day-col-empty">אין משמרות</div>}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

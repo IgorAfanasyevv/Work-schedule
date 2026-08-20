@@ -178,6 +178,21 @@ table.sched th .day-date{
   border-radius:5px;padding:1px 6px;display:inline-block;
 }
 table.sched td{padding:2px;border-bottom:1px solid var(--border-soft);border-left:1px solid var(--border-soft);vertical-align:top;}
+
+.day-columns{display:flex;gap:6px;align-items:flex-start;}
+.day-column{
+  flex:1 1 0;min-width:0;background:var(--panel);border-radius:8px;border:1px solid var(--border-soft);
+  padding:6px;display:flex;flex-direction:column;gap:3px;
+}
+.day-column.weekend-col{background:rgba(107,138,253,.05);border-color:rgba(107,138,253,.25);}
+.day-col-header{font-size:12px;font-weight:700;color:var(--text);text-align:center;padding-bottom:5px;border-bottom:1px solid var(--border-soft);margin-bottom:3px;}
+.day-col-header .day-date{
+  display:inline-block;font-size:10px;font-weight:700;color:var(--teal);margin-right:4px;
+  font-family:'IBM Plex Mono',monospace;background:rgba(79,209,197,.12);border-radius:4px;padding:0 5px;
+}
+.day-col-row{display:flex;flex-direction:column;}
+.day-col-row-label{font-size:9px;font-weight:700;color:var(--text-faint);margin-bottom:1px;padding:0 2px;}
+.day-col-empty{font-size:10px;color:var(--text-faint);text-align:center;padding:14px 0;}
 table.sched td:first-child, table.sched th:first-child{border-left:none;}
 .rowlabel{font-weight:700;font-size:12.5px;color:var(--text);white-space:nowrap;padding:8px 10px !important;background:var(--panel);}
 .rowlabel .sub{display:block;font-size:13px;color:var(--teal);font-weight:700;font-family:'IBM Plex Mono';margin-top:3px;letter-spacing:.01em;}
@@ -299,6 +314,8 @@ table.sched td:first-child, table.sched th:first-child{border-left:none;}
   .pill-stat{min-width:120px;padding:10px 12px;}
   .pill-stat .n{font-size:20px;}
   table.sched{min-width:640px;}
+  .day-columns{min-width:760px;overflow-x:auto;}
+  .table-wrap{overflow-x:auto;}
   .modal{max-width:100%;border-radius:12px;}
   .overlay{padding:0;align-items:flex-end;}
   .modal{max-height:92vh;border-radius:16px 16px 0 0;}
