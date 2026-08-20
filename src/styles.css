@@ -197,6 +197,8 @@ table.sched td:first-child, table.sched th:first-child{border-left:none;}
 .shift-cell.st-manual{border:1.5px solid var(--cell-manual-border);background:var(--cell-manual-bg);}
 .shift-cell.st-warn{border:1.5px solid var(--cell-warn-border);background:var(--cell-warn-bg);}
 .shift-cell.st-temp{border:1.5px solid var(--cell-temp-border);background:var(--cell-temp-bg);}
+.shift-cell.st-covered{border:1.5px solid var(--teal);background:rgba(79,209,197,.12);}
+.shift-cell.st-covered .empty-msg-plain{color:var(--teal);font-weight:600;}
 .cell-icons{position:absolute;top:6px;left:6px;display:flex;gap:3px;}
 .mini-dot{width:6px;height:6px;border-radius:50%;}
 

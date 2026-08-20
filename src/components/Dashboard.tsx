@@ -1,6 +1,6 @@
 import React from 'react';
 import { useScheduler } from '../SchedulerContext';
-import { isAssigned } from '../engine';
+import { isAssigned, needsAttention } from '../engine';
 import { DAY_NAMES } from '../types';
 import { addMonthsISO, todayISO } from '../dateUtils';
 
@@ -10,7 +10,7 @@ export default function Dashboard() {
 
   const total = instances.length;
   const filled = instances.filter((i) => isAssigned(i)).length;
-  const empty = total - filled;
+  const empty = instances.filter((i) => needsAttention(instances, i)).length;
   const belowTarget = employees.filter(
     (e) => instances.filter((i) => i.employeeId === e.id).length < e.desiredShifts
   ).length;
@@ -103,7 +103,7 @@ export default function Dashboard() {
             <div style={{ color: 'var(--text-faint)', fontSize: 13 }}>אין משמרות פתוחות 🎉</div>
           ) : (
             instances
-              .filter((i) => !isAssigned(i))
+              .filter((i) => needsAttention(instances, i))
               .slice(0, 8)
               .map((i) => (
                 <div className="reason-item" style={{ justifyContent: 'space-between' }} key={i.id}>

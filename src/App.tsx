@@ -1,5 +1,6 @@
 import React from 'react';
 import { SchedulerProvider, useScheduler, Tab } from './SchedulerContext';
+import { needsAttention } from './engine';
 import Dashboard from './components/Dashboard';
 import ScheduleView from './components/ScheduleView';
 import MyShifts from './components/MyShifts';
@@ -28,7 +29,7 @@ function Shell() {
     );
   }
 
-  const unfilledCount = instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+  const unfilledCount = instances.filter((i) => needsAttention(instances, i)).length;
   const filledCount = instances.length - unfilledCount;
   // same rule as the in-page banner: don't flag a week nobody has touched yet
   const showGapBadge = unfilledCount > 0 && filledCount > 0;

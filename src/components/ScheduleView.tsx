@@ -1,6 +1,6 @@
 import React from 'react';
 import { useScheduler } from '../SchedulerContext';
-import { assigneeLabel, instanceStatus, toMinutes } from '../engine';
+import { assigneeLabel, findCoveringLongShift, instanceStatus, toMinutes } from '../engine';
 import { DAY_NAMES } from '../types';
 import type { ShiftInstance } from '../types';
 import AvailabilityGrid from './AvailabilityGrid';
@@ -168,10 +168,12 @@ function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showD
   const { state, instances, openModal, setAssignMode, deleteInstance } = useScheduler();
   const status = instanceStatus(inst);
   const label = assigneeLabel(inst, state.employees);
+  const coveringShift = !label ? findCoveringLongShift(instances, inst) : null;
+  const coveringName = coveringShift ? assigneeLabel(coveringShift, state.employees) : null;
 
   return (
     <div
-      className={`shift-cell ${statusClass(status)}`}
+      className={`shift-cell ${coveringShift ? 'st-covered' : statusClass(status)}`}
       style={{ marginBottom: 3 }}
       onClick={() => {
         setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
@@ -218,6 +220,10 @@ function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showD
               מתגבר
             </span>
           )}
+        </div>
+      ) : coveringShift ? (
+        <div className="empty-msg-plain" title={`מכוסה על ידי המשמרת הארוכה של ${coveringName} (${coveringShift.start}–${coveringShift.end})`}>
+          ✓ מכוסה ע"י {coveringName}
         </div>
       ) : (
         <div className="empty-msg">⛔ לא מאוישת</div>

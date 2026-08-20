@@ -19,6 +19,7 @@ import {
   generateFullSchedule,
   getEligibility,
   makeInstance,
+  needsAttention,
   uid,
 } from './engine';
 import { defaultState, loadState, saveState, subscribeRemoteState, flushPendingSaves } from './state';
@@ -260,7 +261,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => {
       setState((s) => {
         const generated = generateFullSchedule(s.employees, currentInstances(s), s.weekStartDate, carryOverFromPreviousWeek);
-        const unfilled = generated.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+        const unfilled = generated.filter((i) => needsAttention(generated, i)).length;
         const text =
           unfilled > 0
             ? `נוצר סידור מלא עבור ${s.weekLabel} — אך ${unfilled} משמרות נשארו לא מאוישות (אין עובד זמין/מתאים).`
@@ -309,7 +310,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        const unfilled = instances.filter((i) => !i.employeeId && !i.tempWorkerName).length;
+        const unfilled = instances.filter((i) => needsAttention(instances, i)).length;
         const next = withAudit(
           withCurrentInstances(s, instances),
           `בוצע בדיקה מקומית: ${changed} שיבוצים לא תקינים הוסרו. ${unfilled > 0 ? `${unfilled} משמרות נשארות לא מאוישות (לא מולאו אוטומטית).` : 'כל המשמרות מאוישות.'}`

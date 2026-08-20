@@ -132,6 +132,12 @@ export function isAssigned(inst: ShiftInstance): boolean {
   return !!(inst.employeeId || inst.tempWorkerName);
 }
 
+/** an instance genuinely needs someone: it's unassigned AND not already covered by someone
+ *  else's 12h+ shift that day */
+export function needsAttention(instances: ShiftInstance[], inst: ShiftInstance): boolean {
+  return !isAssigned(inst) && !findCoveringLongShift(instances, inst);
+}
+
 export function assigneeLabel(inst: ShiftInstance, employees: Employee[]): string | null {
   if (inst.employeeId) {
     const e = employees.find((x) => x.id === inst.employeeId);
@@ -525,6 +531,25 @@ export function findTwelveHourChains(
 /* ---------------------------------------------------------------------- */
 /*  decision explanation (section 32 of the spec)                         */
 /* ---------------------------------------------------------------------- */
+
+/**
+ * If a slot is unassigned but someone else's long (12h+) shift that same day already spans this
+ * slot's whole time window, the slot is effectively already covered - it shouldn't be flagged as
+ * a gap that needs a person. Returns the covering instance, or null if this slot genuinely needs
+ * someone.
+ */
+export function findCoveringLongShift(instances: ShiftInstance[], target: ShiftInstance): ShiftInstance | null {
+  if (target.employeeId || target.tempWorkerName) return null;
+  const targetRange = shiftAbsRange(target.day, target.start, target.end);
+  const candidates = instances.filter(
+    (i) => i.id !== target.id && (i.employeeId || i.tempWorkerName) && i.durationHours >= 11.5
+  );
+  for (const c of candidates) {
+    const cRange = shiftAbsRange(c.day, c.start, c.end);
+    if (cRange[0] <= targetRange[0] && cRange[1] >= targetRange[1]) return c;
+  }
+  return null;
+}
 
 export function explain(
   employee: Employee,
