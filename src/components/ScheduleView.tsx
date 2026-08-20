@@ -19,6 +19,7 @@ export default function ScheduleView() {
     goToDate,
     clearSchedule,
     cleanupExtraWeekendNightSlots,
+    cleanupExtraWeekendNightSlotsEverywhere,
   } = useScheduler();
 
   const extraNightSlots = (() => {
@@ -137,21 +138,49 @@ export default function ScheduleView() {
       </div>
       {calendarView ? <CalendarView /> : <TableView />}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-        {extraNightSlots > 0 && (
-          <button
-            className="btn sm"
-            style={{ borderColor: 'var(--violet)', color: 'var(--violet)' }}
-            title="מסיר תאי לילה כפולים מיותרים בשישי/שבת שנוצרו לפני שהחוק עודכן - נשאר תא אחד לכל סוג משמרת לילה, כמו בימי חול"
-            onClick={() => {
-              if (confirm(`להסיר ${extraNightSlots} תאי לילה כפולים מיותרים בשישי/שבת בשבוע זה?`)) {
-                cleanupExtraWeekendNightSlots();
-              }
-            }}
-          >
-            🧹 נקה {extraNightSlots} תאי לילה כפולים מיותרים
-          </button>
-        )}
+      {extraNightSlots > 0 && (
+        <div
+          className="card"
+          style={{
+            marginTop: 14,
+            borderColor: 'var(--violet)',
+            background: 'var(--cell-temp-bg)',
+            padding: '14px 18px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--text)' }}>
+              🧹 נמצאו {extraNightSlots} תאי לילה כפולים מיותרים בשישי/שבת בשבוע הזה (משבועות שנוצרו לפני
+              עדכון החוק). זה לא משפיע על שום דבר אחר בסידור.
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn sm"
+                style={{ borderColor: 'var(--violet)', color: 'var(--violet)' }}
+                onClick={() => {
+                  if (confirm(`להסיר ${extraNightSlots} תאי לילה כפולים מיותרים בשישי/שבת בשבוע זה בלבד?`)) {
+                    cleanupExtraWeekendNightSlots();
+                  }
+                }}
+              >
+                נקה רק בשבוע הזה
+              </button>
+              <button
+                className="btn primary sm"
+                onClick={() => {
+                  if (confirm('להסיר תאי לילה כפולים מיותרים בשישי/שבת מכל השבועות שנשמרו עד כה, בבת אחת?')) {
+                    cleanupExtraWeekendNightSlotsEverywhere();
+                  }
+                }}
+              >
+                נקה בכל השבועות
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
         <button
           className="btn danger sm"
           title="מנקה רק מי משובץ לאיזו משמרת. לא נוגע להעדפות/חסימות של העובדים."

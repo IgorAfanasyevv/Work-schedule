@@ -76,6 +76,7 @@ interface Ctx {
   localRecalc: () => void;
   clearSchedule: () => void;
   cleanupExtraWeekendNightSlots: () => void;
+  cleanupExtraWeekendNightSlotsEverywhere: () => void;
   clearWeekPreferences: () => void;
 
   assignEmployee: (instanceId: string, employeeId: string | null, opts?: { force?: boolean }) => { ok: boolean; reasons?: string[] };
@@ -398,6 +399,50 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
     toast('משמרות הלילה הכפולות המיותרות בסוף השבוע הוסרו');
+  }, [withAudit, toast]);
+
+  /** same cleanup as above, but sweeps through EVERY week already stored for this site at once -
+   *  for permanently fixing every week that was seeded before the "no night doubling on weekends"
+   *  rule existed, instead of clicking a per-week button one week at a time. Only ever touches
+   *  night-category Friday/Saturday duplicate slots; nothing else in any week is affected. */
+  const cleanupExtraWeekendNightSlotsEverywhere = useCallback(() => {
+    setState((s) => {
+      let totalRemoved = 0;
+      let weeksAffected = 0;
+      const weeks: AppState['weeks'] = {};
+      for (const [wk, insts] of Object.entries(s.weeks)) {
+        const seen = new Set<string>();
+        const kept: ShiftInstance[] = [];
+        let removedHere = 0;
+        for (const inst of insts) {
+          const isWeekendNight = inst.category === 'night' && (inst.day === 5 || inst.day === 6);
+          if (!isWeekendNight) {
+            kept.push(inst);
+            continue;
+          }
+          const key = `${inst.day}-${inst.shiftTypeId}`;
+          if (seen.has(key)) {
+            removedHere++;
+            continue;
+          }
+          seen.add(key);
+          kept.push(inst);
+        }
+        weeks[wk] = kept;
+        if (removedHere > 0) {
+          totalRemoved += removedHere;
+          weeksAffected++;
+        }
+      }
+      if (totalRemoved === 0) return s;
+      const next = withAudit(
+        { ...s, weeks },
+        `נוקו ${totalRemoved} משמרות לילה כפולות מיותרות בסוף השבוע ב-${weeksAffected} שבועות שונים (כל השבועות שנבדקו).`
+      );
+      saveState(next, siteIdRef.current);
+      return next;
+    });
+    toast('כל השבועות נוקו ממשמרות לילה כפולות מיותרות בסוף השבוע');
   }, [withAudit, toast]);
 
   /** clears only THIS week's day/shift preferences (set from the availability grid) for every
@@ -983,6 +1028,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       localRecalc,
       clearSchedule,
       cleanupExtraWeekendNightSlots,
+      cleanupExtraWeekendNightSlotsEverywhere,
       clearWeekPreferences,
       assignEmployee,
       assignTemp,
@@ -1030,6 +1076,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       localRecalc,
       clearSchedule,
       cleanupExtraWeekendNightSlots,
+      cleanupExtraWeekendNightSlotsEverywhere,
       clearWeekPreferences,
       assignEmployee,
       assignTemp,
