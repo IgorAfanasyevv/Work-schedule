@@ -175,8 +175,15 @@ function CompactSlotCell({ day, stId, instances }: { day: number; stId: string; 
   const visible = allMatches.filter((i) => isAssigned(i) || !isSlotCovered(instances, i));
 
   if (allMatches.length > 0 && visible.length === 0) {
-    // every slot here is redundant (covered by other shifts that day) - leave the cell blank
-    return <td className="compact-cell" />;
+    // every slot here is redundant - covered by a long (12h+) shift elsewhere that day - mark it
+    // instead of leaving totally blank space with no explanation
+    return (
+      <td className="compact-cell">
+        <div className="cell-covered-tag" title="מכוסה על ידי משמרת ארוכה של 12 שעות באותו יום">
+          12 שעות ✓
+        </div>
+      </td>
+    );
   }
 
   return (

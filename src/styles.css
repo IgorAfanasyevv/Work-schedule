@@ -181,16 +181,22 @@ table.sched td{padding:2px;border-bottom:1px solid var(--border-soft);border-lef
 
 table.sched.compact td.compact-cell{padding:3px 4px;min-width:96px;}
 .cell-line{
-  display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:4px;cursor:pointer;
-  font-size:11.5px;font-weight:700;line-height:1.3;margin-bottom:1px;transition:background .1s;
+  display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:5px;cursor:pointer;
+  font-size:11px;font-weight:700;line-height:1.3;margin-bottom:2px;transition:filter .1s;
+  border:1.5px solid transparent;
 }
-.cell-line:hover{background:var(--panel-2);}
-.cell-line-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.cell-line.st-filled{color:var(--green);}
-.cell-line.st-manual{color:var(--blue);}
-.cell-line.st-warn{color:var(--amber);}
-.cell-line.st-temp{color:var(--violet);}
-.cell-line.st-empty{color:var(--red);font-size:10.5px;font-weight:600;}
+.cell-line:hover{filter:brightness(1.12);}
+.cell-line-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-strong);}
+.cell-line.st-filled{background:var(--cell-filled-bg);border-color:var(--cell-filled-border);}
+.cell-line.st-manual{background:var(--cell-manual-bg);border-color:var(--cell-manual-border);}
+.cell-line.st-warn{background:var(--cell-warn-bg);border-color:var(--cell-warn-border);}
+.cell-line.st-temp{background:var(--cell-temp-bg);border-color:var(--cell-temp-border);}
+.cell-line.st-empty{background:var(--cell-empty-bg);border-color:var(--cell-empty-border);font-size:10px;font-weight:600;}
+.cell-line.st-empty .cell-line-text{color:var(--cell-empty-border);}
+.cell-covered-tag{
+  font-size:9.5px;font-weight:700;color:var(--teal);background:rgba(79,209,197,.12);
+  border:1px dashed var(--teal);border-radius:5px;text-align:center;padding:4px 2px;
+}
 .cell-line-tag{font-size:8px;font-weight:800;padding:0 4px;border-radius:3px;background:var(--panel-2);color:var(--text-faint);flex:none;}
 .cell-line-tag.violet{color:var(--violet);}
 .cell-line-tag.amber{color:var(--amber);}
