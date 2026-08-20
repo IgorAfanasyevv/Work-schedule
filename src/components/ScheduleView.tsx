@@ -242,7 +242,7 @@ function DaySlotCell({ day, stId, instances }: { day: number; stId: string; inst
 
   if (allMatches.length > 0 && matches.length === 0) {
     // every slot in this row is covered - the whole row is redundant, collapse it away entirely
-    return <div style={{ minHeight: 4 }} />;
+    return null;
   }
 
   return (

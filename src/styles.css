@@ -177,7 +177,7 @@ table.sched th .day-date{
   font-family:'IBM Plex Mono',monospace;letter-spacing:.02em;background:rgba(79,209,197,.12);
   border-radius:5px;padding:1px 6px;display:inline-block;
 }
-table.sched td{padding:3px;border-bottom:1px solid var(--border-soft);border-left:1px solid var(--border-soft);vertical-align:top;}
+table.sched td{padding:2px;border-bottom:1px solid var(--border-soft);border-left:1px solid var(--border-soft);vertical-align:top;}
 table.sched td:first-child, table.sched th:first-child{border-left:none;}
 .rowlabel{font-weight:700;font-size:12.5px;color:var(--text);white-space:nowrap;padding:8px 10px !important;background:var(--panel);}
 .rowlabel .sub{display:block;font-size:13px;color:var(--teal);font-weight:700;font-family:'IBM Plex Mono';margin-top:3px;letter-spacing:.01em;}
