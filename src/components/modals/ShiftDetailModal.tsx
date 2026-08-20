@@ -132,11 +132,27 @@ export default function ShiftDetailModal({ instanceId }: { instanceId: string })
           <div className="field-row" style={{ marginTop: 8 }}>
             <div className="field" style={{ marginBottom: 0 }}>
               <label>שעת התחלה</label>
-              <input type="time" value={customStart} onChange={(ev) => setCustomStart(ev.target.value)} />
+              <input
+                type="time"
+                value={customStart}
+                onChange={(ev) => {
+                  // native time inputs fire onChange with an EMPTY value while the user is still
+                  // mid-way through picking (e.g. hour set but not minutes yet) - ignoring that
+                  // intermediate empty event is what stops the field from visually "resetting"
+                  // while you're still typing
+                  if (ev.target.value) setCustomStart(ev.target.value);
+                }}
+              />
             </div>
             <div className="field" style={{ marginBottom: 0 }}>
               <label>שעת סיום</label>
-              <input type="time" value={customEnd} onChange={(ev) => setCustomEnd(ev.target.value)} />
+              <input
+                type="time"
+                value={customEnd}
+                onChange={(ev) => {
+                  if (ev.target.value) setCustomEnd(ev.target.value);
+                }}
+              />
             </div>
             <button
               className="btn sm"
