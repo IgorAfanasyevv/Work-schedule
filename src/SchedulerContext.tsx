@@ -7,12 +7,14 @@ import type {
   ShiftType,
   Category,
 } from './types';
+import type { TwelveHourChainOption } from './engine';
 import { REASON_LABELS, DAY_NAMES } from './types';
 import {
   addHoursToTime,
   assigneeLabel,
   durationHours,
   findReplacements,
+  findTwelveHourChains,
   generateFullSchedule,
   getEligibility,
   makeInstance,
@@ -80,6 +82,7 @@ interface Ctx {
   removeTemp: (instanceId: string) => void;
   markUnavailable: (instanceId: string, reason: string) => void;
   applyReplacementOption: (instanceId: string, optionIndex: number) => void;
+  applyTwelveHourChain: (option: TwelveHourChainOption) => void;
   setInstanceTime: (instanceId: string, start: string, end: string) => void;
   duplicateInstance: (instanceId: string) => void;
   deleteInstance: (instanceId: string) => void;
@@ -532,6 +535,47 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
     [state, empName, withAudit, toast]
   );
 
+  /**
+   * "Creative" gap-filling: instead of finding someone directly free for the vacant slot, free up
+   * an employee who's tied up elsewhere by having a DIFFERENT employee absorb that other shift as
+   * an extended 12-hour shift, then move the now-free employee onto the vacant slot.
+   */
+  const applyTwelveHourChain = useCallback(
+    (option: TwelveHourChainOption) => {
+      setState((s) => {
+        let instances = currentInstances(s);
+        instances = instances.map((i) =>
+          i.id === option.sourceInstanceId
+            ? {
+                ...i,
+                employeeId: option.coveringEmployeeId,
+                tempWorkerName: null,
+                manual: true,
+                start: option.newStart,
+                end: option.newEnd,
+                durationHours: 12,
+              }
+            : i
+        );
+        instances = instances.map((i) =>
+          i.id === option.vacantInstanceId
+            ? { ...i, employeeId: option.freedEmployeeId, tempWorkerName: null, manual: true }
+            : i
+        );
+        const text =
+          `פתרון 12 שעות: ${option.coveringEmployeeName} עבר לכסות את ${DAY_NAMES[option.sourceDay]} ` +
+          `${option.newStart}-${option.newEnd} (משמרת של 12 שעות) במקום ${option.freedEmployeeName}, ` +
+          `כדי ש${option.freedEmployeeName} יתפנה לכסות משמרת חסרה.`;
+        const next = withAudit(withCurrentInstances(s, instances), text);
+        saveState(next, siteIdRef.current);
+        return next;
+      });
+      toast('הפתרון היצירתי הופעל');
+    },
+    [withAudit, toast]
+  );
+
+
   /* ------------------------------------------------------------------ */
   const addEmployee = useCallback(
     (name: string, desired: number, max: number) => {
@@ -904,6 +948,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       removeTemp,
       markUnavailable,
       applyReplacementOption,
+      applyTwelveHourChain,
       setInstanceTime,
       duplicateInstance,
       deleteInstance,
@@ -949,6 +994,7 @@ export function SchedulerProvider({ children }: { children: React.ReactNode }) {
       removeTemp,
       markUnavailable,
       applyReplacementOption,
+      applyTwelveHourChain,
       setInstanceTime,
       duplicateInstance,
       deleteInstance,

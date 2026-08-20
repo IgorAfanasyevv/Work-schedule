@@ -1,16 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import Modal from '../ui/Modal';
 import { useScheduler } from '../../SchedulerContext';
-import { findReplacements, getEligibility } from '../../engine';
+import { findReplacements, findTwelveHourChains, getEligibility } from '../../engine';
 import { DAY_NAMES, REASON_LABELS } from '../../types';
 
 export default function ReplacementsModal({ instanceId }: { instanceId: string }) {
-  const { state, instances, applyReplacementOption, assignTemp, closeModal } = useScheduler();
+  const { state, instances, applyReplacementOption, applyTwelveHourChain, assignTemp, closeModal } = useScheduler();
   const inst = instances.find((i) => i.id === instanceId);
   const [tempName, setTempName] = useState('');
 
   const options = useMemo(
     () => (inst ? findReplacements(instanceId, instances, state.employees, state.weekStartDate, 3) : []),
+    [inst, instanceId, instances, state.employees]
+  );
+
+  const twelveHourOptions = useMemo(
+    () => (inst ? findTwelveHourChains(instanceId, instances, state.employees, state.weekStartDate, 3) : []),
     [inst, instanceId, instances, state.employees]
   );
 
@@ -76,6 +81,41 @@ export default function ReplacementsModal({ instanceId }: { instanceId: string }
           {ineligible.map((x, i) => (
             <div className="reason-item" key={i}>
               🔴 <b style={{ color: 'var(--text)' }}>{x.e.name}</b> — {x.elig.reasons.map((r) => REASON_LABELS[r.type]).join('; ')}
+            </div>
+          ))}
+        </>
+      )}
+
+      {twelveHourOptions.length > 0 && (
+        <>
+          <h3 style={{ marginTop: 20, fontSize: 14 }}>🔀 פתרון יצירתי: משמרת 12 שעות</h3>
+          <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '0 0 10px' }}>
+            אף אחד לא פנוי ישירות? אפשר לשחרר עובד ממשמרת קיימת ביום אחר — עובד אחר יכסה אותה כמשמרת
+            אחת של 12 שעות במקומו, והוא יתפנה לכסות את המשמרת החסרה כאן.
+          </p>
+          {twelveHourOptions.map((o, idx) => (
+            <div className="opt-card" key={idx} style={{ borderColor: 'var(--violet)' }}>
+              <div className="opt-head">
+                <span className="opt-title">🔀 {o.freedEmployeeName} מתפנה לכאן</span>
+              </div>
+              <ul>
+                <li>
+                  {DAY_NAMES[o.sourceDay]} {o.sourceName} ({o.originalStart}–{o.originalEnd}): {o.freedEmployeeName} ←{' '}
+                  {o.coveringEmployeeName} (עכשיו {o.newStart}–{o.newEnd}, 12 שעות)
+                </li>
+                <li>
+                  {DAY_NAMES[inst.day]} {inst.name} ({inst.start}–{inst.end}): ← {o.freedEmployeeName}
+                </li>
+              </ul>
+              <button
+                className="btn primary sm"
+                onClick={() => {
+                  applyTwelveHourChain(o);
+                  closeModal();
+                }}
+              >
+                בחר פתרון זה
+              </button>
             </div>
           ))}
         </>

@@ -400,6 +400,79 @@ export function findReplacements(
 }
 
 /* ---------------------------------------------------------------------- */
+/*  "creative" gap-filling: free someone up from a normal shift elsewhere  */
+/*  by having a DIFFERENT person cover that slot as an extended 12-hour    */
+/*  shift, then move the now-free person onto the vacant/gap slot          */
+/* ---------------------------------------------------------------------- */
+
+export interface TwelveHourChainOption {
+  vacantInstanceId: string;
+  freedEmployeeId: string;
+  freedEmployeeName: string;
+  /** the shift the freed employee gets pulled off of */
+  sourceInstanceId: string;
+  sourceDay: number;
+  sourceName: string;
+  originalStart: string;
+  originalEnd: string;
+  /** who absorbs that slot into a 12-hour shift instead */
+  coveringEmployeeId: string;
+  coveringEmployeeName: string;
+  newStart: string;
+  newEnd: string;
+}
+
+export function findTwelveHourChains(
+  vacantInstanceId: string,
+  instances: ShiftInstance[],
+  employees: Employee[],
+  weekStartDate: string,
+  maxOptions = 3
+): TwelveHourChainOption[] {
+  const vacant = instances.find((i) => i.id === vacantInstanceId);
+  if (!vacant) return [];
+  const options: TwelveHourChainOption[] = [];
+
+  for (const E of employees) {
+    const eAssignments = instances.filter((i) => i.employeeId === E.id && i.id !== vacantInstanceId);
+    for (const S of eAssignments) {
+      // would E be eligible for the vacant slot if S weren't tying them up?
+      const elig = getEligibility(E, vacant, instances, weekStartDate, S.id);
+      if (!elig.eligible) continue;
+
+      const newEnd = addHoursToTime(S.start, 12);
+      const candidateInstance: ShiftInstance = { ...S, start: S.start, end: newEnd, durationHours: 12 };
+
+      for (const F of employees) {
+        if (F.id === E.id) continue;
+        // F must not already be working that day somewhere else
+        const fBusyThatDay = instances.some((i) => i.employeeId === F.id && i.day === S.day && i.id !== S.id);
+        if (fBusyThatDay) continue;
+        const fElig = getEligibility(F, candidateInstance, instances, weekStartDate, S.id);
+        if (fElig.eligible) {
+          options.push({
+            vacantInstanceId,
+            freedEmployeeId: E.id,
+            freedEmployeeName: E.name,
+            sourceInstanceId: S.id,
+            sourceDay: S.day,
+            sourceName: S.name,
+            originalStart: S.start,
+            originalEnd: S.end,
+            coveringEmployeeId: F.id,
+            coveringEmployeeName: F.name,
+            newStart: S.start,
+            newEnd,
+          });
+          if (options.length >= maxOptions) return options;
+        }
+      }
+    }
+  }
+  return options;
+}
+
+/* ---------------------------------------------------------------------- */
 /*  decision explanation (section 32 of the spec)                         */
 /* ---------------------------------------------------------------------- */
 
