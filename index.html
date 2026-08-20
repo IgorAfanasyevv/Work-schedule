@@ -11,6 +11,13 @@
     />
   </head>
   <body>
+    <script>
+      // set the theme attribute before React mounts, so there's no flash of the wrong theme
+      try {
+        var t = localStorage.getItem('shift-scheduler-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

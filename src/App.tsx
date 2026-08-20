@@ -8,6 +8,7 @@ import ShiftTypes from './components/ShiftTypes';
 import RefresherTracking from './components/RefresherTracking';
 import ModalHost from './components/ModalHost';
 import Toasts from './components/ui/Toasts';
+import ThemeToggle from './components/ui/ThemeToggle';
 
 const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: 'לוח בקרה' },
@@ -110,6 +111,7 @@ function Shell() {
       </div>
       <ModalHost />
       <Toasts />
+      <ThemeToggle />
     </div>
   );
 }
