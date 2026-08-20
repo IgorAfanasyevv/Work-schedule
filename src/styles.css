@@ -179,20 +179,28 @@ table.sched th .day-date{
 }
 table.sched td{padding:2px;border-bottom:1px solid var(--border-soft);border-left:1px solid var(--border-soft);vertical-align:top;}
 
-.day-columns{display:flex;gap:6px;align-items:flex-start;}
-.day-column{
-  flex:1 1 0;min-width:0;background:var(--panel);border-radius:8px;border:1px solid var(--border-soft);
-  padding:6px;display:flex;flex-direction:column;gap:3px;
+table.sched.compact td.compact-cell{padding:3px 4px;min-width:96px;}
+.cell-line{
+  display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:4px;cursor:pointer;
+  font-size:11.5px;font-weight:700;line-height:1.3;margin-bottom:1px;transition:background .1s;
 }
-.day-column.weekend-col{background:rgba(107,138,253,.05);border-color:rgba(107,138,253,.25);}
-.day-col-header{font-size:12px;font-weight:700;color:var(--text);text-align:center;padding-bottom:5px;border-bottom:1px solid var(--border-soft);margin-bottom:3px;}
-.day-col-header .day-date{
-  display:inline-block;font-size:10px;font-weight:700;color:var(--teal);margin-right:4px;
-  font-family:'IBM Plex Mono',monospace;background:rgba(79,209,197,.12);border-radius:4px;padding:0 5px;
+.cell-line:hover{background:var(--panel-2);}
+.cell-line-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cell-line.st-filled{color:var(--green);}
+.cell-line.st-manual{color:var(--blue);}
+.cell-line.st-warn{color:var(--amber);}
+.cell-line.st-temp{color:var(--violet);}
+.cell-line.st-empty{color:var(--red);font-size:10.5px;font-weight:600;}
+.cell-line-tag{font-size:8px;font-weight:800;padding:0 4px;border-radius:3px;background:var(--panel-2);color:var(--text-faint);flex:none;}
+.cell-line-tag.violet{color:var(--violet);}
+.cell-line-tag.amber{color:var(--amber);}
+.cell-line-del{margin-right:auto;background:none;border:none;color:var(--text-faint);font-size:11px;cursor:pointer;padding:0 2px;flex:none;}
+.cell-line-del:hover{color:var(--red);}
+.cell-add-btn{
+  width:100%;background:none;border:1px dashed var(--border-soft);border-radius:4px;color:var(--text-faint);
+  font-size:9.5px;line-height:1.6;padding:1px 0;cursor:pointer;margin-top:1px;
 }
-.day-col-row{display:flex;flex-direction:column;}
-.day-col-row-label{font-size:9px;font-weight:700;color:var(--text-faint);margin-bottom:1px;padding:0 2px;}
-.day-col-empty{font-size:10px;color:var(--text-faint);text-align:center;padding:14px 0;}
+.cell-add-btn:disabled{opacity:.35;cursor:default;}
 table.sched td:first-child, table.sched th:first-child{border-left:none;}
 .rowlabel{font-weight:700;font-size:12.5px;color:var(--text);white-space:nowrap;padding:8px 10px !important;background:var(--panel);}
 .rowlabel .sub{display:block;font-size:13px;color:var(--teal);font-weight:700;font-family:'IBM Plex Mono';margin-top:3px;letter-spacing:.01em;}
@@ -314,7 +322,6 @@ table.sched td:first-child, table.sched th:first-child{border-left:none;}
   .pill-stat{min-width:120px;padding:10px 12px;}
   .pill-stat .n{font-size:20px;}
   table.sched{min-width:640px;}
-  .day-columns{min-width:760px;overflow-x:auto;}
   .table-wrap{overflow-x:auto;}
   .modal{max-width:100%;border-radius:12px;}
   .overlay{padding:0;align-items:flex-end;}
