@@ -90,11 +90,11 @@ function flushLocalSite(siteId: string) {
 
 export function saveLocalState(state: AppState, siteId: string) {
   pendingLocal[siteId] = state;
-  // no debounce delay: every save in this app already happens after a single discrete user
-  // action (a click, a modal submit), never on every keystroke, so there's nothing to batch -
-  // and any delay here is pure risk of losing the change if the page is refreshed/closed before
-  // the timer fires
-  flushLocalSite(siteId);
+  // deferred to the next tick (not a real debounce delay) rather than called synchronously,
+  // since this can be triggered from inside a React state updater and firing storage/network
+  // side effects synchronously mid-update is risky; still effectively immediate for the purpose
+  // of not losing data on a quick refresh
+  setTimeout(() => flushLocalSite(siteId), 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,11 +142,9 @@ function flushRemoteSite(siteId: string) {
 export function saveRemoteState(state: AppState, siteId: string) {
   if (!db) return;
   pendingRemote[siteId] = state;
-  // same reasoning as saveLocalState: fire immediately rather than debouncing, since a delayed
-  // write is a delayed write that a quick refresh can catch mid-flight and lose - async network
-  // writes can't be reliably completed during page unload, so minimizing how long a write sits
-  // unsent is the real mitigation, not a bigger safety net after the fact
-  flushRemoteSite(siteId);
+  // same reasoning as saveLocalState: deferred to the next tick instead of called synchronously
+  // from inside a React state updater, and with no artificial delay beyond that
+  setTimeout(() => flushRemoteSite(siteId), 0);
 }
 
 /** subscribe to live changes for one site (from any tab/user); returns an unsubscribe function */
