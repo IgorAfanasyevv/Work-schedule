@@ -103,12 +103,12 @@ export default function AvailabilityGrid() {
                             width: '100%',
                             minHeight: 44,
                             borderRadius: 8,
-                            border: '1px solid ' + (isDayOff ? 'var(--red)' : 'var(--green)'),
+                            border: '1.5px solid ' + (isDayOff ? 'var(--cell-empty-border)' : 'var(--cell-filled-border)'),
                             cursor: 'pointer',
                             fontSize: 12.5,
                             fontWeight: 700,
-                            color: isDayOff ? '#2a0d0d' : '#0a2e17',
-                            background: isDayOff ? 'var(--red)' : 'var(--green)',
+                            color: 'var(--text-strong)',
+                            background: isDayOff ? 'var(--cell-empty-bg)' : 'var(--cell-filled-bg)',
                           }}
                         >
                           {view.label}

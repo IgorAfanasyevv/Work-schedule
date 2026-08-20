@@ -22,6 +22,18 @@
   --violet-dim:#3d2f52;
   --radius:10px;
   --shadow: 0 10px 30px -12px rgba(0,0,0,.55);
+  /* dedicated colors for schedule-cell status cards, tuned separately per theme so they don't
+     turn muddy when the same semi-transparent overlay is used on a light background */
+  --cell-filled-bg: rgba(95,211,130,.24);
+  --cell-filled-border: var(--green);
+  --cell-empty-bg: rgba(239,91,91,.20);
+  --cell-empty-border: var(--red);
+  --cell-manual-bg: rgba(107,138,253,.24);
+  --cell-manual-border: var(--blue);
+  --cell-warn-bg: rgba(240,169,78,.24);
+  --cell-warn-border: var(--amber);
+  --cell-temp-bg: rgba(199,146,234,.24);
+  --cell-temp-border: var(--violet);
 }
 [data-theme="light"]{
   --bg:#f2f4f7;
@@ -46,6 +58,17 @@
   --violet:#8b3fc0;
   --violet-dim:#f1e2fa;
   --shadow: 0 10px 30px -12px rgba(20,25,35,.18);
+  /* solid, hand-picked pastels instead of the dark theme's alpha-blend, which reads muddy on white */
+  --cell-filled-bg:#dcf3e2;
+  --cell-filled-border:#2fa860;
+  --cell-empty-bg:#fbe1e0;
+  --cell-empty-border:#d64545;
+  --cell-manual-bg:#e1e7fc;
+  --cell-manual-border:#3a5bd9;
+  --cell-warn-bg:#faead2;
+  --cell-warn-border:#c2790e;
+  --cell-temp-bg:#f2e1f9;
+  --cell-temp-border:#9b4fc9;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
@@ -168,12 +191,12 @@ table.sched td:first-child, table.sched th:first-child{border-left:none;}
 .shift-cell .who{font-weight:700;font-size:13px;color:var(--text-strong);letter-spacing:.005em;}
 .shift-cell .empty-msg{color:var(--red);font-size:10.5px;font-weight:600;}
 .shift-cell .empty-msg-plain{color:var(--text-faint);font-size:10.5px;font-weight:500;}
-.shift-cell.st-filled{border:1.5px solid var(--green);background:rgba(95,211,130,.24);}
-.shift-cell.st-empty{border:1.5px solid var(--red);background:rgba(239,91,91,.20);}
+.shift-cell.st-filled{border:1.5px solid var(--cell-filled-border);background:var(--cell-filled-bg);}
+.shift-cell.st-empty{border:1.5px solid var(--cell-empty-border);background:var(--cell-empty-bg);}
 .shift-cell.st-empty-plain{border-right:3px solid var(--border-soft);background:transparent;}
-.shift-cell.st-manual{border:1.5px solid var(--blue);background:rgba(107,138,253,.24);}
-.shift-cell.st-warn{border:1.5px solid var(--amber);background:rgba(240,169,78,.24);}
-.shift-cell.st-temp{border:1.5px solid var(--violet);background:rgba(199,146,234,.24);}
+.shift-cell.st-manual{border:1.5px solid var(--cell-manual-border);background:var(--cell-manual-bg);}
+.shift-cell.st-warn{border:1.5px solid var(--cell-warn-border);background:var(--cell-warn-bg);}
+.shift-cell.st-temp{border:1.5px solid var(--cell-temp-border);background:var(--cell-temp-bg);}
 .cell-icons{position:absolute;top:6px;left:6px;display:flex;gap:3px;}
 .mini-dot{width:6px;height:6px;border-radius:50%;}
 
