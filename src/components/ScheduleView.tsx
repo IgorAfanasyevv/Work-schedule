@@ -1,6 +1,6 @@
 import React from 'react';
 import { useScheduler } from '../SchedulerContext';
-import { assigneeLabel, findCoveringLongShift, instanceStatus, toMinutes } from '../engine';
+import { assigneeLabel, isAssigned, isSlotCovered, instanceStatus, toMinutes } from '../engine';
 import { DAY_NAMES } from '../types';
 import type { ShiftInstance } from '../types';
 import AvailabilityGrid from './AvailabilityGrid';
@@ -165,15 +165,13 @@ function statusClass(status: ReturnType<typeof instanceStatus>): string {
 }
 
 function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showDelete?: boolean; slotLabel?: string }) {
-  const { state, instances, openModal, setAssignMode, deleteInstance } = useScheduler();
+  const { state, openModal, setAssignMode, deleteInstance } = useScheduler();
   const status = instanceStatus(inst);
   const label = assigneeLabel(inst, state.employees);
-  const coveringShift = !label ? findCoveringLongShift(instances, inst) : null;
-  const coveringName = coveringShift ? assigneeLabel(coveringShift, state.employees) : null;
 
   return (
     <div
-      className={`shift-cell ${coveringShift ? 'st-covered' : statusClass(status)}`}
+      className={`shift-cell ${statusClass(status)}`}
       style={{ marginBottom: 3 }}
       onClick={() => {
         setAssignMode(inst.tempWorkerName ? 'temp' : 'regular');
@@ -182,32 +180,11 @@ function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showD
     >
       <div className="time mono">
         {inst.start}–{inst.end}
-        {slotLabel && (
-          <span
-            style={{
-              marginRight: 6,
-              color: 'var(--violet)',
-              background: 'rgba(199,146,234,.14)',
-              borderRadius: 4,
-              padding: '0 5px',
-              fontWeight: 700,
-            }}
-          >
-            {slotLabel}
-          </span>
-        )}
+      </div>
+      <div className="cell-badges">
+        {slotLabel && <span className="mini-badge b-violet-tint">{slotLabel}</span>}
         {inst.durationHours >= 11.5 && (
-          <span
-            title="משמרת של 12 שעות"
-            style={{
-              marginRight: 6,
-              color: 'var(--amber)',
-              background: 'rgba(240,169,78,.14)',
-              borderRadius: 4,
-              padding: '0 5px',
-              fontWeight: 700,
-            }}
-          >
+          <span className="mini-badge b-amber-tint" title="משמרת של 12 שעות">
             12 שעות
           </span>
         )}
@@ -220,10 +197,6 @@ function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showD
               מתגבר
             </span>
           )}
-        </div>
-      ) : coveringShift ? (
-        <div className="empty-msg-plain" title={`מכוסה על ידי המשמרת הארוכה של ${coveringName} (${coveringShift.start}–${coveringShift.end})`}>
-          ✓ מכוסה ע"י {coveringName}
         </div>
       ) : (
         <div className="empty-msg">⛔ לא מאוישת</div>
@@ -262,7 +235,15 @@ function ShiftCell({ inst, showDelete, slotLabel }: { inst: ShiftInstance; showD
 
 function DaySlotCell({ day, stId, instances }: { day: number; stId: string; instances: ShiftInstance[] }) {
   const { duplicateInstance } = useScheduler();
-  const matches = instances.filter((i) => i.day === day && i.shiftTypeId === stId);
+  const allMatches = instances.filter((i) => i.day === day && i.shiftTypeId === stId);
+  // hide any slot that's unassigned AND already redundant (fully covered - alone or jointly with
+  // other assigned shifts that day) instead of showing it as an empty "not staffed" card
+  const matches = allMatches.filter((i) => isAssigned(i) || !isSlotCovered(instances, i));
+
+  if (allMatches.length > 0 && matches.length === 0) {
+    // every slot in this row is covered - the whole row is redundant, collapse it away entirely
+    return <div style={{ minHeight: 4 }} />;
+  }
 
   return (
     <div style={{ position: 'relative' }}>
@@ -276,7 +257,7 @@ function DaySlotCell({ day, stId, instances }: { day: number; stId: string; inst
       ))}
       <button
         type="button"
-        onClick={() => duplicateInstance(matches[0]?.id ?? matches[matches.length - 1]?.id)}
+        onClick={() => duplicateInstance(matches[0]?.id ?? allMatches[allMatches.length - 1]?.id)}
         title="הוסף תא נוסף לאותה משמרת (לחגים/סופ״ש עם שני עובדים)"
         disabled={matches.length === 0}
         style={{
@@ -360,7 +341,9 @@ function CalendarView() {
   return (
     <>
       {DAY_NAMES.map((dayName, d) => {
-        const dayInsts = instances.filter((i) => i.day === d).sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+        const dayInsts = instances
+          .filter((i) => i.day === d && (isAssigned(i) || !isSlotCovered(instances, i)))
+          .sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
         const isWeekend = d === 5 || d === 6;
         return (
           <div className="timeline-day" key={d}>

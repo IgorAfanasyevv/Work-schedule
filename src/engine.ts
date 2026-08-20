@@ -135,7 +135,7 @@ export function isAssigned(inst: ShiftInstance): boolean {
 /** an instance genuinely needs someone: it's unassigned AND not already covered by someone
  *  else's 12h+ shift that day */
 export function needsAttention(instances: ShiftInstance[], inst: ShiftInstance): boolean {
-  return !isAssigned(inst) && !findCoveringLongShift(instances, inst);
+  return !isAssigned(inst) && !isSlotCovered(instances, inst);
 }
 
 export function assigneeLabel(inst: ShiftInstance, employees: Employee[]): string | null {
@@ -549,6 +549,39 @@ export function findCoveringLongShift(instances: ShiftInstance[], target: ShiftI
     if (cRange[0] <= targetRange[0] && cRange[1] >= targetRange[1]) return c;
   }
   return null;
+}
+
+/**
+ * Same idea as findCoveringLongShift, but for the case where no SINGLE shift covers the target -
+ * two (or more) assigned shifts together might still fully span it, e.g. someone working
+ * 06:00–18:00 and someone else 18:00–06:00 jointly cover the entire day, leaving a normal
+ * afternoon-type slot (13:45–22:00) fully redundant even though neither 12h shift alone contains
+ * it. Merges all assigned same-relevant-day intervals and checks whether their union fully
+ * contains the target's time range.
+ */
+export function isSlotFullyCoveredByUnion(instances: ShiftInstance[], target: ShiftInstance): boolean {
+  if (target.employeeId || target.tempWorkerName) return false;
+  const targetRange = shiftAbsRange(target.day, target.start, target.end);
+  const others = instances
+    .filter((i) => i.id !== target.id && (i.employeeId || i.tempWorkerName))
+    .map((i) => shiftAbsRange(i.day, i.start, i.end))
+    .filter((r) => r[1] > targetRange[0] && r[0] < targetRange[1]) // only ranges overlapping the target at all
+    .sort((a, b) => a[0] - b[0]);
+  if (others.length === 0) return false;
+
+  let covered = targetRange[0];
+  for (const [s, e] of others) {
+    if (s > covered) return false; // a gap - not fully covered
+    covered = Math.max(covered, e);
+    if (covered >= targetRange[1]) return true;
+  }
+  return covered >= targetRange[1];
+}
+
+/** true if this slot is genuinely redundant - either one long shift or several assigned shifts
+ *  together already span its entire time window that day */
+export function isSlotCovered(instances: ShiftInstance[], target: ShiftInstance): boolean {
+  return !!findCoveringLongShift(instances, target) || isSlotFullyCoveredByUnion(instances, target);
 }
 
 export function explain(
